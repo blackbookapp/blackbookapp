@@ -466,9 +466,9 @@ function Step6Preview({ d, set }: { d: WizardData; set: (k: keyof WizardData, v:
   const pickColor = async (color: string) => {
     set("theme_color", color);
     await fetch("/api/creator", {
-      method: "POST",
+      method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...d, theme_color: color, is_published: false }),
+      body: JSON.stringify({ theme_color: color }),
     });
     setIframeKey(k => k + 1);
   };
@@ -486,10 +486,14 @@ function Step6Preview({ d, set }: { d: WizardData; set: (k: keyof WizardData, v:
         body: JSON.stringify({ message: msg }),
       });
       const data = await res.json();
+      if (!res.ok) {
+        setAiMessages(p => [...p, { role: "ai", text: `Erro: ${data.error || "Tente novamente."}` }]);
+        return;
+      }
       setAiMessages(p => [...p, { role: "ai", text: data.reply || "Feito!" }]);
-      if (data.refreshLP) setIframeKey(k => k + 1);
-    } catch {
-      setAiMessages(p => [...p, { role: "ai", text: "Erro ao processar. Tente novamente." }]);
+      if (data.actions?.length > 0) setIframeKey(k => k + 1);
+    } catch (e: any) {
+      setAiMessages(p => [...p, { role: "ai", text: "Erro de conexão. Tente novamente." }]);
     } finally {
       setAiLoading(false);
     }

@@ -90,6 +90,30 @@ export async function POST(req: NextRequest) {
   }
 }
 
+// PATCH /api/creator — atualiza só theme_color
+export async function PATCH(req: NextRequest) {
+  try {
+    const { userId } = await auth();
+    if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const { theme_color, slug } = await req.json();
+    if (!theme_color) return NextResponse.json({ error: "theme_color obrigatório" }, { status: 400 });
+
+    const supabase = getSupabase();
+
+    const filter = userId
+      ? supabase.from("creator_profiles").update({ theme_color }).eq("user_id", userId)
+      : supabase.from("creator_profiles").update({ theme_color }).eq("slug", slug);
+
+    const { error } = await filter;
+    if (error) throw error;
+
+    return NextResponse.json({ ok: true });
+  } catch (e: any) {
+    return NextResponse.json({ error: e.message }, { status: 500 });
+  }
+}
+
 // GET /api/creator?slug=xxx ou ?user_id=xxx
 export async function GET(req: NextRequest) {
   const slug = req.nextUrl.searchParams.get("slug");
