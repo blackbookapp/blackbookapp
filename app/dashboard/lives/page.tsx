@@ -62,7 +62,7 @@ export default function LivesDashboardPage() {
           </div>
           <h2 className="text-xl font-bold mb-2">Nenhuma aula ao vivo agendada</h2>
           <p className="text-sm text-muted-foreground max-w-md font-light">
-            As transmissões ao vivo com a Isabela Badini e mentorias da comunidade aparecerão aqui assim que forem programadas.
+            As transmissões ao vivo e mentorias da comunidade aparecerão aqui assim que forem programadas.
           </p>
         </div>
       ) : (

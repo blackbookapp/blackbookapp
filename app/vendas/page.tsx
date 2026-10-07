@@ -135,9 +135,9 @@ const STYLES = [
 ];
 
 const CREATORS = [
-  { name: "Isabela Badini", specialty: "Blackwork & Fineline", slug: "isabela-badini", students: "847", rating: "4.9" },
-  { name: "Rafael Costa", specialty: "Realismo Colorido", slug: "rafael-costa", students: "512", rating: "4.8" },
-  { name: "Ana Drummond", specialty: "Aquarela & Neo Trad", slug: "ana-drummond", students: "391", rating: "5.0" },
+  { name: "Lucas Ferreira", specialty: "Blackwork & Fineline", slug: "", students: "847", rating: "4.9" },
+  { name: "Rafael Costa", specialty: "Realismo Colorido", slug: "", students: "512", rating: "4.8" },
+  { name: "Ana Drummond", specialty: "Aquarela & Neo Trad", slug: "", students: "391", rating: "5.0" },
 ];
 
 const FAQS = [
@@ -383,10 +383,10 @@ export default function BlackbookPage() {
                       <p className="text-[10px] text-muted-foreground uppercase tracking-widest">Avaliação</p>
                     </div>
                   </div>
-                  <Link href={`/c/${c.slug}`}>
+                  <Link href="/criar">
                     <Button variant="outline" size="sm"
                       className="w-full rounded-xl text-[10px] tracking-widest uppercase border-white/15 hover:border-primary/40 group-hover:bg-primary/5">
-                      Ver Página <ChevronRight className="w-3.5 h-3.5 ml-1" />
+                      Criar como este <ChevronRight className="w-3.5 h-3.5 ml-1" />
                     </Button>
                   </Link>
                 </div>

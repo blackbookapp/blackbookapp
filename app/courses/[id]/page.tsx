@@ -116,10 +116,10 @@ export default function CoursePlayer() {
             <div className="flex items-center gap-6 pb-6 border-b border-white/5 mb-6">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full overflow-hidden relative">
-                  <Image src="https://picsum.photos/seed/artist/100/100" alt="Isabela Badini" fill referrerPolicy="no-referrer" />
+                  <Image src="https://picsum.photos/seed/artist/100/100" alt="Instrutor" fill referrerPolicy="no-referrer" />
                 </div>
                 <div>
-                  <p className="text-sm font-bold text-white">Isabela Badini</p>
+                  <p className="text-sm font-bold text-white">Instrutor Blackbook</p>
                   <p className="text-[10px] uppercase font-bold tracking-widest text-primary">Master Instructor</p>
                 </div>
               </div>

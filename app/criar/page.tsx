@@ -133,10 +133,10 @@ function Step1({ d, set }: { d: WizardData; set: (k: keyof WizardData, v: any) =
     <div className="space-y-5">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         <Field label="Seu nome" hint="Como aparecerá na LP">
-          <Input value={d.name} onChange={handleNameChange} placeholder="Ex: Isabela Badini" />
+          <Input value={d.name} onChange={handleNameChange} placeholder="Ex: Lucas Ferreira" />
         </Field>
         <Field label="Slug da sua página" hint={`Sua URL será: /c/${d.slug || "seu-nome"}`}>
-          <Input value={d.slug} onChange={(v) => set("slug", slugify(v))} placeholder="isabela-badini" />
+          <Input value={d.slug} onChange={(v) => set("slug", slugify(v))} placeholder="lucas-ferreira" />
         </Field>
       </div>
 
@@ -173,7 +173,7 @@ function Step1({ d, set }: { d: WizardData; set: (k: keyof WizardData, v: any) =
           <div className="relative">
             <Instagram className="absolute left-3 top-3.5 w-4 h-4 text-muted-foreground/50" />
             <Input value={d.instagram} onChange={(v) => set("instagram", v)}
-              placeholder="@isabela.badini" className="pl-10" />
+              placeholder="@lucas.ferreira" className="pl-10" />
           </div>
         </Field>
       </div>
