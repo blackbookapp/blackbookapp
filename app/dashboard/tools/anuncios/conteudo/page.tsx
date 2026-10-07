@@ -7,7 +7,7 @@ import { DefaultChatTransport } from "ai";
 import { useEffect, useRef, useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 
-const WELCOME = `Olá! Sou o Agente de Criação de Conteúdo da Ink Authority. ✍️
+const WELCOME = `Olá! Sou o Agente de Criação de Conteúdo da Blackbook. ✍️
 
 Vou te ajudar a criar conteúdo que atrai clientes, gera autoridade e cresce seu perfil nas redes sociais — tudo específico para o mercado de tatuagem.
 

@@ -1,9 +1,8 @@
-import { SignIn } from "@clerk/nextjs";
-
-export default function SignInPage() {
-  return (
-    <div className="min-h-screen bg-[#080808] flex items-center justify-center">
-      <SignIn />
-    </div>
-  );
+"use client";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
+export default function SignInRedirect() {
+  const router = useRouter();
+  useEffect(() => { router.replace("/entrar"); }, []);
+  return null;
 }

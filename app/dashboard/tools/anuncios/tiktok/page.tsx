@@ -7,7 +7,7 @@ import { DefaultChatTransport } from "ai";
 import { useEffect, useRef, useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 
-const WELCOME = `Fala! Sou o Agente de TikTok da Ink Authority. 🎵
+const WELCOME = `Fala! Sou o Agente de TikTok da Blackbook. 🎵
 
 Vou te ajudar tanto com TikTok Ads (anúncios pagos) quanto com estratégia de conteúdo orgânico para crescer no TikTok e atrair clientes de tatuagem.
 

@@ -7,7 +7,7 @@ import { DefaultChatTransport } from "ai";
 import { useEffect, useRef, useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 
-const WELCOME = `Olá! Sou o Agente de Meta Ads da Ink Authority. 📱
+const WELCOME = `Olá! Sou o Agente de Meta Ads da Blackbook. 📱
 
 Vou te ajudar a criar campanhas no Facebook e Instagram que atraem clientes de tatuagem na sua região.
 

@@ -185,10 +185,9 @@ export function Navbar() {
   // what surfaced as "no menu after logging in on mobile."
   const dashboardLinks = [
     { name: "Meu Aprendizado", path: "/dashboard", icon: <BookOpen className="w-4 h-4" /> },
+    { name: "Meus Cursos", path: "/dashboard/courses", icon: <Compass className="w-4 h-4" /> },
     { name: "Ao Vivo", path: "/dashboard/lives", icon: <Radio className="w-4 h-4" /> },
     { name: "Comunidade", path: "/dashboard/community", icon: <Users className="w-4 h-4" /> },
-    { name: "Especialistas", path: "/dashboard/tools", icon: <Bot className="w-4 h-4" /> },
-    { name: "Workshop", path: "/dashboard/courses", icon: <Compass className="w-4 h-4" /> },
     { name: "Biblioteca", path: "/dashboard/library", icon: <Download className="w-4 h-4" /> },
     { name: "Meu Perfil", path: "/dashboard/profile", icon: <User className="w-4 h-4" /> },
   ];
@@ -203,7 +202,7 @@ export function Navbar() {
               <path d="M12 0C12 6.627 17.373 12 24 12C17.373 12 12 17.373 12 24C12 17.373 6.627 12 0 12C6.627 12 12 6.627 12 0Z" />
             </svg>
             <span className="font-black text-[18px] tracking-[-0.5px] uppercase text-foreground">
-              Ink Authority
+              Blackbook
             </span>
           </Link>
 

@@ -7,7 +7,7 @@ import { DefaultChatTransport } from "ai";
 import { useEffect, useRef, useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 
-const WELCOME = `Olá! Sou o Agente de Análise de Campanhas da Ink Authority. 📊
+const WELCOME = `Olá! Sou o Agente de Análise de Campanhas da Blackbook. 📊
 
 Vou analisar os dados das suas campanhas e te dar recomendações práticas para melhorar os resultados.
 

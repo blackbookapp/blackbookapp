@@ -13,7 +13,7 @@ export default clerkMiddleware(async (auth, req) => {
 
   // Se tentar acessar rota protegida sem login, manda pra home
   if (isProtectedRoute(req) && !userId) {
-    const signInUrl = new URL("/sign-in", req.url);
+    const signInUrl = new URL("/entrar", req.url);
     signInUrl.searchParams.set("redirect_url", req.nextUrl.pathname);
     return NextResponse.redirect(signInUrl);
   }

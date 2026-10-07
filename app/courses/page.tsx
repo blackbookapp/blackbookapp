@@ -44,7 +44,7 @@ export default function CoursesPage() {
     "Criação de conteúdos que atraem clientes",
     "Técnicas de vendas e conversão de clientes",
     "Como utilizar o tráfego pago de forma objetiva",
-    "Acesso à comunidade exclusiva da Ink Authority",
+    "Acesso à comunidade exclusiva da Blackbook",
     "🎁 BÔNUS: Análise de perfil grátis (para os 20 primeiros)",
   ];
 

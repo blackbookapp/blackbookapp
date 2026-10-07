@@ -21,7 +21,7 @@ export default function AssistantPage() {
           {
             id: "welcome",
             role: "assistant",
-            parts: [{ type: "text", text: "Ola! Sou o seu Tutor IA Especialista da Ink Authority. Como posso ajudar voce a elevar o nivel da sua tatuagem hoje?" }],
+            parts: [{ type: "text", text: "Ola! Sou o seu Tutor IA Especialista da Blackbook. Como posso ajudar voce a elevar o nivel da sua tatuagem hoje?" }],
           } as any,
         ],
       }),

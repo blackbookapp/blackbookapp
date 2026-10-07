@@ -178,7 +178,7 @@ export default function Dashboard() {
           Bem-vindo de volta, {studentName}.
         </h1>
         <p className="text-muted-foreground font-light">
-          Acompanhe seu progresso de aprendizado na Ink Authority.
+          Acompanhe seu progresso de aprendizado na Blackbook.
         </p>
       </div>
 
@@ -226,7 +226,7 @@ export default function Dashboard() {
             : null;
           const isLastWatchedFeatured = !!(lastWatched && lastWatched.courseId === featured.id);
           const heroTitle = isLastWatchedFeatured && lastWatched ? lastWatched.lessonTitle : featured.title;
-          const heroSub = isLastWatchedFeatured ? featured.title : (featured.description || "Workshop da metodologia Ink Authority.");
+          const heroSub = isLastWatchedFeatured ? featured.title : (featured.description || "Workshop da metodologia Blackbook.");
           const isContinuing = isLastWatchedFeatured;
 
           return (

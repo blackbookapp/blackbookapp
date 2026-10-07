@@ -38,7 +38,7 @@ export default function ToolsPage() {
           <svg viewBox="0 0 24 24" fill="currentColor" className="w-8 h-8 text-primary neon-glow">
             <path d="M12 0C12 6.627 17.373 12 24 12C17.373 12 12 17.373 12 24C12 17.373 6.627 12 0 12C6.627 12 12 6.627 12 0Z" />
           </svg>
-          <span className="font-black text-xl tracking-tighter uppercase">Ink Authority</span>
+          <span className="font-black text-xl tracking-tighter uppercase">Blackbook</span>
         </div>
         <Button variant="ghost" onClick={() => window.location.href = "/"}>Voltar</Button>
       </header>
@@ -263,7 +263,7 @@ export default function ToolsPage() {
       </section>
 
       <footer className="py-10 border-t border-border/20 text-center text-sm text-muted-foreground">
-        <p>© 2026 Ink Authority. Todos os direitos reservados.</p>
+        <p>© 2026 Blackbook. Todos os direitos reservados.</p>
         <p className="mt-2 text-xs">Desenvolvido para criadores e tatuadores profissionais.</p>
       </footer>
 

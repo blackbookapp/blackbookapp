@@ -9,8 +9,8 @@ const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 const orbitron = Orbitron({ subsets: ["latin"], variable: "--font-orbitron" });
 
 export const metadata: Metadata = {
-  title: "Ink Authority",
-  description: "High-end tattoo education platform.",
+  title: "Blackbook",
+  description: "Plataforma para tatuadores criarem e venderem cursos.",
 };
 
 export default function RootLayout({
