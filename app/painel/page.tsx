@@ -31,7 +31,6 @@ interface CreatorProfile {
     title: string;
     price: string;
     is_published: boolean;
-    checkout_url: string;
   }>;
 }
 
@@ -115,11 +114,10 @@ function DashboardTab({ profile, sales }: { profile: CreatorProfile; sales: Sale
   const course = profile.creator_courses?.[0];
 
   const checklist = [
-    { done: !!profile.name && !!profile.bio, label: "Perfil preenchido", href: "#", action: "editor" },
+    { done: !!profile.name && !!profile.bio, label: "Perfil preenchido", href: "#" },
     { done: !!course?.title, label: "Curso criado", href: "/criar" },
     { done: !!course?.is_published, label: "LP publicada", href: `/c/${profile.slug}` },
-    { done: !!profile.stripe_onboarding_done, label: "Stripe conectado (para receber)", href: "/api/stripe/connect" },
-    { done: !!course?.checkout_url, label: "URL de checkout configurada", href: "#", action: "editor" },
+    { done: !!profile.stripe_onboarding_done, label: "Stripe conectado (para receber pagamentos)", href: "/api/stripe/connect" },
   ];
 
   const allDone = checklist.every(c => c.done);

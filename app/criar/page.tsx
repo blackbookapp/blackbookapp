@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "motion/react";
 import {
   User, BookOpen, List, MessageSquareQuote, DollarSign,
   Eye, ArrowRight, ArrowLeft, Plus, Trash2, CheckCircle,
-  Instagram, Camera, Sparkles, Upload, Link as LinkIcon
+  Instagram, Camera, Sparkles, Upload
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
@@ -38,7 +38,6 @@ interface WizardData {
   price: string;
   price_installments: string;
   price_installment_value: string;
-  checkout_url: string;
   video_id: string;
 }
 
@@ -47,7 +46,7 @@ const INITIAL: WizardData = {
   course_title: "", course_subtitle: "", main_promise: "", description: "", target_audience: "",
   modules: ["", "", ""],
   testimonials: [{ name: "", role: "", text: "", stars: 5 }],
-  price: "", price_installments: "", price_installment_value: "", checkout_url: "", video_id: "",
+  price: "", price_installments: "", price_installment_value: "", video_id: "",
 };
 
 const STEPS = [
@@ -365,9 +364,14 @@ function Step4({ d, set }: { d: WizardData; set: (k: keyof WizardData, v: any) =
 function Step5({ d, set }: { d: WizardData; set: (k: keyof WizardData, v: any) => void }) {
   return (
     <div className="space-y-5">
-      <p className="text-sm text-muted-foreground">
-        Configure o preço e o link de pagamento. Você pode usar Hotmart, Eduzz, Kiwify, Stripe ou qualquer plataforma.
-      </p>
+      <div className="glass rounded-2xl border border-primary/20 bg-primary/5 p-4 flex items-start gap-3">
+        <Sparkles className="w-4 h-4 text-primary mt-0.5 shrink-0" />
+        <p className="text-sm text-muted-foreground leading-relaxed">
+          O Blackbook gera o checkout automaticamente via Stripe. Quando o aluno clicar em
+          {" "}<strong className="text-foreground">Garantir Vaga</strong>, ele é redirecionado para um
+          link seguro gerado pela plataforma — o valor cai direto na sua conta Stripe (conecte em Configurações).
+        </p>
+      </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
         <Field label="Preço (R$)" hint="Valor cheio">
@@ -381,14 +385,6 @@ function Step5({ d, set }: { d: WizardData; set: (k: keyof WizardData, v: any) =
             placeholder="99,70" />
         </Field>
       </div>
-
-      <Field label="Link de checkout" hint="URL onde o aluno vai pagar — Hotmart, Kiwify, Stripe, Asaas, etc.">
-        <div className="relative">
-          <LinkIcon className="absolute left-3 top-3.5 w-4 h-4 text-muted-foreground/50" />
-          <Input value={d.checkout_url} onChange={(v) => set("checkout_url", v)}
-            placeholder="https://pay.hotmart.com/seu-produto" className="pl-10" />
-        </div>
-      </Field>
 
       <div className="glass rounded-2xl border border-primary/20 p-6 bg-primary/5 space-y-3">
         <div className="flex items-center gap-2 mb-1">
@@ -466,7 +462,7 @@ export default function CriarPage() {
     if (step === 2) return data.course_title.trim() && data.main_promise.trim();
     if (step === 3) return data.modules.filter(m => m.trim()).length >= 3;
     if (step === 4) return data.testimonials.some(t => t.name.trim() && t.text.trim());
-    if (step === 5) return data.price.trim() && data.checkout_url.trim();
+    if (step === 5) return data.price.trim();
     return true;
   };
 
