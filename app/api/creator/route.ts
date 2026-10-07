@@ -14,10 +14,11 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const {
-      name, bio, photo_url, specialty, instagram, slug,
+      name, bio, photo_url, specialty, instagram, slug, theme_color,
       course_title, course_subtitle, main_promise, description, target_audience,
       modules, testimonials,
-      price, price_installments, price_installment_value, checkout_url, video_id,
+      price, price_installments, price_installment_value, video_id,
+      is_published,
     } = body;
 
     if (!slug || !name || !course_title) {
@@ -31,7 +32,11 @@ export async function POST(req: NextRequest) {
     // 1. Upsert creator profile
     const { data: profile, error: profileErr } = await supabase
       .from("creator_profiles")
-      .upsert({ slug, name, bio, photo_url, specialty, instagram, ...(userId ? { user_id: userId } : {}) }, { onConflict: "slug" })
+      .upsert({
+        slug, name, bio, photo_url, specialty, instagram,
+        ...(theme_color ? { theme_color } : {}),
+        ...(userId ? { user_id: userId } : {}),
+      }, { onConflict: "slug" })
       .select()
       .single();
 
@@ -50,9 +55,8 @@ export async function POST(req: NextRequest) {
         price: price ? parseFloat(price) : null,
         price_installments: price_installments ? parseInt(price_installments) : null,
         price_installment_value: price_installment_value ? parseFloat(price_installment_value.replace(",", ".")) : null,
-        checkout_url,
         video_id,
-        is_published: true,
+        is_published: is_published !== undefined ? is_published : true,
       }, { onConflict: "creator_id" })
       .select()
       .single();

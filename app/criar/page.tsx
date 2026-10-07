@@ -1,11 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   User, BookOpen, List, MessageSquareQuote, DollarSign,
   Eye, ArrowRight, ArrowLeft, Plus, Trash2, CheckCircle,
-  Instagram, Camera, Sparkles, Upload
+  Instagram, Camera, Sparkles, Upload, Send
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
@@ -39,6 +39,8 @@ interface WizardData {
   price_installments: string;
   price_installment_value: string;
   video_id: string;
+  // Step 6 — Identidade
+  theme_color: string;
 }
 
 const INITIAL: WizardData = {
@@ -47,6 +49,7 @@ const INITIAL: WizardData = {
   modules: ["", "", ""],
   testimonials: [{ name: "", role: "", text: "", stars: 5 }],
   price: "", price_installments: "", price_installment_value: "", video_id: "",
+  theme_color: "#A3A3A3",
 };
 
 const STEPS = [
@@ -410,39 +413,182 @@ function Step5({ d, set }: { d: WizardData; set: (k: keyof WizardData, v: any) =
   );
 }
 
-function Step6Preview({ d }: { d: WizardData }) {
-  const url = `/c/${d.slug}`;
+const THEME_COLORS = [
+  { name: "Prata",    value: "#A3A3A3" },
+  { name: "Roxo",     value: "#a855f7" },
+  { name: "Ciano",    value: "#06b6d4" },
+  { name: "Dourado",  value: "#eab308" },
+  { name: "Verde",    value: "#22c55e" },
+  { name: "Laranja",  value: "#f97316" },
+  { name: "Azul",     value: "#3b82f6" },
+  { name: "Rosa",     value: "#ec4899" },
+];
+
+function Step6Preview({ d, set }: { d: WizardData; set: (k: keyof WizardData, v: any) => void }) {
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  const [iframeKey, setIframeKey] = useState(0);
+  const [aiMessages, setAiMessages] = useState<{ role: "user" | "ai"; text: string }[]>([
+    { role: "ai", text: "Sua LP está pronta para visualização! Me diga o que quer ajustar — título, bio, módulos, depoimentos, preço — e eu edito na hora." }
+  ]);
+  const [aiInput, setAiInput] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const aiBottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    aiBottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [aiMessages]);
+
+  const saveDraft = async (overrides?: Partial<WizardData>) => {
+    setSaving(true);
+    setSaveError("");
+    try {
+      const payload = { ...d, ...overrides, is_published: false };
+      const res = await fetch("/api/creator", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Erro ao salvar");
+      setSaved(true);
+    } catch (e: any) {
+      setSaveError(e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Auto-save when entering step
+  useEffect(() => { saveDraft(); }, []);
+
+  const pickColor = async (color: string) => {
+    set("theme_color", color);
+    await fetch("/api/creator", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...d, theme_color: color, is_published: false }),
+    });
+    setIframeKey(k => k + 1);
+  };
+
+  const sendAI = async () => {
+    if (!aiInput.trim() || aiLoading) return;
+    const msg = aiInput.trim();
+    setAiInput("");
+    setAiMessages(p => [...p, { role: "user", text: msg }]);
+    setAiLoading(true);
+    try {
+      const res = await fetch("/api/ai-editor", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: msg }),
+      });
+      const data = await res.json();
+      setAiMessages(p => [...p, { role: "ai", text: data.reply || "Feito!" }]);
+      if (data.refreshLP) setIframeKey(k => k + 1);
+    } catch {
+      setAiMessages(p => [...p, { role: "ai", text: "Erro ao processar. Tente novamente." }]);
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
   return (
-    <div className="space-y-6">
-      <div className="glass rounded-2xl border border-primary/30 p-6 bg-primary/5">
-        <p className="text-[11px] font-bold uppercase tracking-widest text-primary mb-3">Sua LP vai ser gerada em:</p>
-        <code className="text-lg font-bold text-foreground">{typeof window !== "undefined" ? window.location.origin : ""}{url}</code>
+    <div className="space-y-5">
+      {/* Status bar */}
+      <div className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold ${
+        saveError ? "bg-red-500/10 border border-red-500/20 text-red-400" :
+        saved ? "bg-green-500/10 border border-green-500/20 text-green-400" :
+        "bg-white/5 border border-white/10 text-muted-foreground"
+      }`}>
+        {saving ? <><div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" /> Salvando rascunho...</> :
+         saveError ? <><CheckCircle className="w-3 h-3" /> {saveError}</> :
+         saved ? <><CheckCircle className="w-3 h-3" /> Rascunho salvo — sua LP está no preview abaixo</> :
+         "Preparando..."}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {[
-          { label: "Criador", value: d.name || "—" },
-          { label: "Especialidade", value: d.specialty || "—" },
-          { label: "Título do curso", value: d.course_title || "—" },
-          { label: "Preço", value: d.price ? `R$ ${parseFloat(d.price).toLocaleString("pt-BR")}` : "—" },
-          { label: "Módulos", value: `${d.modules.filter(m => m.trim()).length} itens` },
-          { label: "Depoimentos", value: `${d.testimonials.filter(t => t.name && t.text).length} depoimentos` },
-        ].map((item) => (
-          <div key={item.label} className="glass rounded-xl border border-white/10 p-4">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1">{item.label}</p>
-            <p className="text-sm font-semibold truncate">{item.value}</p>
+      {/* Color picker */}
+      <div>
+        <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground mb-2">Cor de destaque da sua LP</p>
+        <div className="flex flex-wrap gap-2">
+          {THEME_COLORS.map((c) => (
+            <button key={c.value} type="button" onClick={() => pickColor(c.value)}
+              title={c.name}
+              className={`w-8 h-8 rounded-full border-2 transition-all ${d.theme_color === c.value ? "scale-125 border-white" : "border-transparent hover:scale-110"}`}
+              style={{ backgroundColor: c.value }} />
+          ))}
+        </div>
+      </div>
+
+      {/* Split: preview + AI chat */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4" style={{ height: 480 }}>
+        {/* Preview iframe */}
+        <div className="glass rounded-2xl border border-white/10 overflow-hidden flex flex-col">
+          <div className="px-3 py-2 border-b border-white/8 flex items-center justify-between">
+            <span className="text-[10px] font-mono text-muted-foreground">blackbookapp.com.br/c/{d.slug}</span>
+            {saved && (
+              <button onClick={() => setIframeKey(k => k + 1)}
+                className="text-muted-foreground hover:text-foreground transition-colors text-[10px] flex items-center gap-1">
+                <Upload className="w-3 h-3" /> Atualizar
+              </button>
+            )}
           </div>
-        ))}
+          {saved ? (
+            <iframe key={iframeKey} src={`/c/${d.slug}/preview`} className="flex-1 w-full border-none" title="Preview" />
+          ) : (
+            <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
+              <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+            </div>
+          )}
+        </div>
+
+        {/* AI chat */}
+        <div className="glass rounded-2xl border border-white/10 flex flex-col overflow-hidden">
+          <div className="px-4 py-2.5 border-b border-white/8 flex items-center gap-2">
+            <Sparkles className="w-3.5 h-3.5 text-primary" />
+            <span className="text-xs font-bold">Editar com IA</span>
+          </div>
+          <div className="flex-1 overflow-y-auto p-3 space-y-3">
+            {aiMessages.map((msg, i) => (
+              <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+                <div className={`max-w-[88%] rounded-xl px-3 py-2 text-xs leading-relaxed whitespace-pre-wrap ${
+                  msg.role === "user" ? "bg-primary/20 border border-primary/30" : "bg-white/5 border border-white/10"
+                }`}>
+                  {msg.text}
+                </div>
+              </div>
+            ))}
+            {aiLoading && (
+              <div className="flex justify-start">
+                <div className="bg-white/5 border border-white/10 rounded-xl px-3 py-2 flex gap-1">
+                  {[0,1,2].map(i => (
+                    <motion.div key={i} animate={{ opacity: [0.3,1,0.3] }}
+                      transition={{ duration: 1, repeat: Infinity, delay: i * 0.2 }}
+                      className="w-1.5 h-1.5 rounded-full bg-primary" />
+                  ))}
+                </div>
+              </div>
+            )}
+            <div ref={aiBottomRef} />
+          </div>
+          <div className="p-3 border-t border-white/8 flex gap-2">
+            <input value={aiInput} onChange={(e) => setAiInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendAI()}
+              placeholder="Ex: Muda o título para..."
+              className="flex-1 bg-white/5 border border-white/15 rounded-xl px-3 py-2 text-xs placeholder:text-muted-foreground focus:outline-none focus:border-primary/40" />
+            <Button onClick={sendAI} disabled={aiLoading || !aiInput.trim() || !saved}
+              className="metallic-gradient text-black font-bold px-3 rounded-xl text-xs h-8">
+              <Send className="w-3.5 h-3.5" />
+            </Button>
+          </div>
+        </div>
       </div>
 
-      <div className="glass rounded-2xl border border-primary/20 bg-primary/5 p-5">
-        <p className="text-xs font-bold text-primary uppercase tracking-widest mb-2">Próximo passo</p>
-        <p className="text-sm text-muted-foreground leading-relaxed">
-          Clique em <span className="text-foreground font-semibold">"Publicar e Ativar"</span> para salvar sua LP
-          e concluir o pagamento único de <span className="text-foreground font-semibold">R$ 997</span>.
-          Depois disso sua página fica no ar para sempre.
-        </p>
-      </div>
+      {saveError && (
+        <p className="text-xs text-red-400 text-center">{saveError}</p>
+      )}
     </div>
   );
 }
@@ -560,7 +706,7 @@ export default function CriarPage() {
             {step === 3 && <Step3 d={data} set={set} />}
             {step === 4 && <Step4 d={data} set={set} />}
             {step === 5 && <Step5 d={data} set={set} />}
-            {step === 6 && <Step6Preview d={data} />}
+            {step === 6 && <Step6Preview d={data} set={set} />}
           </motion.div>
         </AnimatePresence>
 

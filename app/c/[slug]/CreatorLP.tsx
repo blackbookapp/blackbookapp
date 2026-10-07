@@ -13,6 +13,7 @@ interface CreatorProfile {
   specialty: string;
   instagram: string;
   slug: string;
+  theme_color?: string;
 }
 
 interface CreatorCourse {
@@ -59,10 +60,11 @@ function StarRating({ count }: { count: number }) {
 }
 
 // ─── Main LP ──────────────────────────────────────────────────────────────────
-export default function CreatorLP({ profile, course }: { profile: CreatorProfile; course: CreatorCourse | null }) {
+export default function CreatorLP({ profile, course, isPreview }: { profile: CreatorProfile; course: CreatorCourse | null; isPreview?: boolean }) {
   const { scrollY } = useScroll();
   const navBg = useTransform(scrollY, [0, 80], ["rgba(8,8,8,0)", "rgba(8,8,8,0.92)"]);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const accent = profile.theme_color || "#A3A3A3";
 
   const modules = course?.creator_modules?.sort((a, b) => a.order_index - b.order_index) || [];
   const testimonials = course?.creator_testimonials || [];
@@ -88,7 +90,8 @@ export default function CreatorLP({ profile, course }: { profile: CreatorProfile
   };
 
   return (
-    <div className="min-h-screen bg-[#080808] text-white overflow-x-hidden">
+    <div className="min-h-screen bg-[#080808] text-white overflow-x-hidden" style={{ "--color-primary": accent, "--color-ring": accent, "--color-accent": accent } as React.CSSProperties}>
+      <style>{`:root { --color-primary: ${accent}; --color-ring: ${accent}; --color-accent: ${accent}; }`}</style>
 
       {/* ─── NAVBAR ─── */}
       <motion.nav style={{ backgroundColor: navBg }}

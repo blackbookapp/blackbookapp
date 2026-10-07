@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS creator_profiles (
   -- Platform access
   platform_paid             boolean DEFAULT false, -- pagou R$ 997 de ativação
   platform_paid_at          timestamptz,
+  theme_color               text DEFAULT '#A3A3A3', -- cor de destaque da LP
   -- Meta
   created_at                timestamptz DEFAULT now(),
   updated_at                timestamptz DEFAULT now()
