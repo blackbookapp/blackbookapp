@@ -125,10 +125,33 @@ function Stars({ value, onChange }: { value: number; onChange: (v: number) => vo
 
 // ─── Step components ──────────────────────────────────────────────────────────
 function Step1({ d, set }: { d: WizardData; set: (k: keyof WizardData, v: any) => void }) {
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
+
   const handleNameChange = (v: string) => {
     set("name", v);
     set("slug", slugify(v));
   };
+
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    setUploadError("");
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch("/api/upload/profile-photo", { method: "POST", body: form });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Erro no upload");
+      set("photo_url", json.url);
+    } catch (err: any) {
+      setUploadError(err.message);
+    } finally {
+      setUploading(false);
+    }
+  };
+
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -162,12 +185,32 @@ function Step1({ d, set }: { d: WizardData; set: (k: keyof WizardData, v: any) =
       </Field>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-        <Field label="Foto de perfil (URL)" hint="Link direto para uma imagem sua">
-          <div className="relative">
-            <Camera className="absolute left-3 top-3.5 w-4 h-4 text-muted-foreground/50" />
-            <Input value={d.photo_url} onChange={(v) => set("photo_url", v)}
-              placeholder="https://..." className="pl-10" />
-          </div>
+        <Field label="Foto de perfil" hint="JPG ou PNG, máx. 5MB">
+          <label className={`relative flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed cursor-pointer transition-all overflow-hidden
+            ${d.photo_url ? "border-primary/40 bg-primary/5" : "border-white/15 bg-white/3 hover:border-white/30 hover:bg-white/5"}`}
+            style={{ minHeight: 120 }}>
+            {d.photo_url ? (
+              <>
+                <img src={d.photo_url} alt="Preview" className="absolute inset-0 w-full h-full object-cover opacity-60" />
+                <div className="relative z-10 flex flex-col items-center gap-1">
+                  <Camera className="w-5 h-5 text-white" />
+                  <span className="text-xs font-semibold text-white">Trocar foto</span>
+                </div>
+              </>
+            ) : uploading ? (
+              <div className="flex flex-col items-center gap-2 py-4">
+                <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                <span className="text-xs text-muted-foreground">Enviando...</span>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center gap-2 py-4">
+                <Upload className="w-6 h-6 text-muted-foreground" />
+                <span className="text-xs text-muted-foreground font-medium">Clique para enviar</span>
+              </div>
+            )}
+            <input type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} disabled={uploading} />
+          </label>
+          {uploadError && <p className="text-xs text-red-400">{uploadError}</p>}
         </Field>
         <Field label="Instagram" hint="@seuinstagram">
           <div className="relative">
