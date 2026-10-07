@@ -1,105 +1,121 @@
 import { NextRequest, NextResponse } from "next/server";
-import Anthropic from "@anthropic-ai/sdk";
 import { createClient } from "@supabase/supabase-js";
 import { auth } from "@clerk/nextjs/server";
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-const TOOLS: Anthropic.Tool[] = [
+const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
+const MODEL = "llama-3.3-70b-versatile";
+
+const TOOLS = [
   {
-    name: "update_profile",
-    description: "Atualiza nome, bio, foto, especialidade ou instagram do criador",
-    input_schema: {
-      type: "object" as const,
-      properties: {
-        name: { type: "string" },
-        bio: { type: "string" },
-        photo_url: { type: "string" },
-        specialty: { type: "string" },
-        instagram: { type: "string" },
-      },
-    },
-  },
-  {
-    name: "update_course",
-    description: "Atualiza título, subtítulo, promessa, descrição, público-alvo, preço ou URL do checkout do curso",
-    input_schema: {
-      type: "object" as const,
-      properties: {
-        title: { type: "string" },
-        subtitle: { type: "string" },
-        main_promise: { type: "string" },
-        description: { type: "string" },
-        target_audience: { type: "string" },
-        price: { type: "string" },
-        checkout_url: { type: "string" },
-        video_id: { type: "string" },
-      },
-    },
-  },
-  {
-    name: "set_modules",
-    description: "Define a lista completa de módulos do curso (substitui todos os atuais)",
-    input_schema: {
-      type: "object" as const,
-      required: ["modules"],
-      properties: {
-        modules: {
-          type: "array",
-          items: { type: "string" },
-          description: "Títulos dos módulos em ordem",
+    type: "function",
+    function: {
+      name: "update_profile",
+      description: "Atualiza nome, bio, foto, especialidade ou instagram do criador",
+      parameters: {
+        type: "object",
+        properties: {
+          name: { type: "string" },
+          bio: { type: "string" },
+          photo_url: { type: "string" },
+          specialty: { type: "string" },
+          instagram: { type: "string" },
         },
       },
     },
   },
   {
-    name: "add_module",
-    description: "Adiciona um novo módulo ao curso",
-    input_schema: {
-      type: "object" as const,
-      required: ["title"],
-      properties: {
-        title: { type: "string" },
+    type: "function",
+    function: {
+      name: "update_course",
+      description: "Atualiza título, subtítulo, promessa, descrição, público-alvo, preço ou URL do checkout do curso",
+      parameters: {
+        type: "object",
+        properties: {
+          title: { type: "string" },
+          subtitle: { type: "string" },
+          main_promise: { type: "string" },
+          description: { type: "string" },
+          target_audience: { type: "string" },
+          price: { type: "string" },
+          checkout_url: { type: "string" },
+          video_id: { type: "string" },
+        },
       },
     },
   },
   {
-    name: "remove_module",
-    description: "Remove um módulo pelo título (ou parte do título)",
-    input_schema: {
-      type: "object" as const,
-      required: ["title"],
-      properties: {
-        title: { type: "string" },
+    type: "function",
+    function: {
+      name: "set_modules",
+      description: "Define a lista completa de módulos do curso (substitui todos os atuais)",
+      parameters: {
+        type: "object",
+        required: ["modules"],
+        properties: {
+          modules: {
+            type: "array",
+            items: { type: "string" },
+            description: "Títulos dos módulos em ordem",
+          },
+        },
       },
     },
   },
   {
-    name: "add_testimonial",
-    description: "Adiciona um depoimento ao curso",
-    input_schema: {
-      type: "object" as const,
-      required: ["name", "text"],
-      properties: {
-        name: { type: "string" },
-        role: { type: "string" },
-        text: { type: "string" },
-        stars: { type: "number" },
+    type: "function",
+    function: {
+      name: "add_module",
+      description: "Adiciona um novo módulo ao curso",
+      parameters: {
+        type: "object",
+        required: ["title"],
+        properties: { title: { type: "string" } },
       },
     },
   },
   {
-    name: "remove_testimonial",
-    description: "Remove um depoimento pelo nome da pessoa",
-    input_schema: {
-      type: "object" as const,
-      required: ["name"],
-      properties: {
-        name: { type: "string" },
+    type: "function",
+    function: {
+      name: "remove_module",
+      description: "Remove um módulo pelo título (ou parte do título)",
+      parameters: {
+        type: "object",
+        required: ["title"],
+        properties: { title: { type: "string" } },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "add_testimonial",
+      description: "Adiciona um depoimento ao curso",
+      parameters: {
+        type: "object",
+        required: ["name", "text"],
+        properties: {
+          name: { type: "string" },
+          role: { type: "string" },
+          text: { type: "string" },
+          stars: { type: "number" },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "remove_testimonial",
+      description: "Remove um depoimento pelo nome da pessoa",
+      parameters: {
+        type: "object",
+        required: ["name"],
+        properties: { name: { type: "string" } },
       },
     },
   },
@@ -139,57 +155,71 @@ Curso atual:
 - Depoimentos: ${course?.creator_testimonials?.map((t: any) => `${t.name} (${t.stars}★)`).join(", ") || "nenhum"}
   `;
 
-  const response = await anthropic.messages.create({
-    model: "claude-haiku-4-5-20251001",
-    max_tokens: 1024,
-    tools: TOOLS,
-    system: `Você é o assistente de edição da plataforma Blackbook. Ajude o criador a editar sua landing page de curso de tatuagem.
-Interprete os pedidos em português e use as ferramentas disponíveis para fazer as alterações.
-Seja direto e eficiente. Confirme o que foi feito em português.
-${context}`,
-    messages: [{ role: "user", content: message }],
+  const groqRes = await fetch(GROQ_API_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: MODEL,
+      messages: [
+        {
+          role: "system",
+          content: `Você é o assistente de edição da plataforma Blackbook. Ajude o criador a editar sua landing page de curso de tatuagem. Interprete os pedidos em português e use as ferramentas disponíveis para fazer as alterações. Seja direto e eficiente. Confirme o que foi feito em português.\n\n${context}`,
+        },
+        { role: "user", content: message },
+      ],
+      tools: TOOLS,
+      tool_choice: "auto",
+      max_tokens: 1024,
+    }),
   });
 
-  const toolUses = response.content.filter((b) => b.type === "tool_use");
-  const textBlocks = response.content.filter((b) => b.type === "text");
+  if (!groqRes.ok) {
+    const err = await groqRes.text();
+    console.error("[ai-editor groq]", err);
+    return NextResponse.json({ error: "Erro ao chamar IA" }, { status: 500 });
+  }
+
+  const groqData = await groqRes.json();
+  const choice = groqData.choices?.[0];
+  const msg = choice?.message;
+  const toolCalls = msg?.tool_calls ?? [];
   const actions: string[] = [];
 
-  for (const tool of toolUses) {
-    if (tool.type !== "tool_use") continue;
-    const input = tool.input as Record<string, any>;
+  for (const tc of toolCalls) {
+    const name = tc.function?.name;
+    const input = JSON.parse(tc.function?.arguments ?? "{}");
 
-    if (tool.name === "update_profile") {
+    if (name === "update_profile") {
       await supabase.from("creator_profiles").update(input).eq("user_id", userId);
       actions.push("perfil atualizado");
     }
 
-    if (tool.name === "update_course" && course) {
+    if (name === "update_course" && course) {
       await supabase.from("creator_courses").update(input).eq("id", course.id);
       actions.push("curso atualizado");
     }
 
-    if (tool.name === "set_modules" && course) {
+    if (name === "set_modules" && course) {
       await supabase.from("creator_modules").delete().eq("course_id", course.id);
-      const modules = (input.modules as string[]).map((title, i) => ({
-        course_id: course.id,
-        title,
-        order_index: i,
+      const modules = (input.modules as string[]).map((title: string, i: number) => ({
+        course_id: course.id, title, order_index: i,
       }));
       await supabase.from("creator_modules").insert(modules);
       actions.push("módulos redefinidos");
     }
 
-    if (tool.name === "add_module" && course) {
+    if (name === "add_module" && course) {
       const count = course.creator_modules?.length ?? 0;
       await supabase.from("creator_modules").insert({
-        course_id: course.id,
-        title: input.title,
-        order_index: count,
+        course_id: course.id, title: input.title, order_index: count,
       });
       actions.push(`módulo "${input.title}" adicionado`);
     }
 
-    if (tool.name === "remove_module" && course) {
+    if (name === "remove_module" && course) {
       const match = course.creator_modules?.find((m: any) =>
         m.title.toLowerCase().includes(input.title.toLowerCase())
       );
@@ -199,7 +229,7 @@ ${context}`,
       }
     }
 
-    if (tool.name === "add_testimonial" && course) {
+    if (name === "add_testimonial" && course) {
       await supabase.from("creator_testimonials").insert({
         course_id: course.id,
         name: input.name,
@@ -210,7 +240,7 @@ ${context}`,
       actions.push(`depoimento de ${input.name} adicionado`);
     }
 
-    if (tool.name === "remove_testimonial" && course) {
+    if (name === "remove_testimonial" && course) {
       const match = course.creator_testimonials?.find((t: any) =>
         t.name.toLowerCase().includes(input.name.toLowerCase())
       );
@@ -224,13 +254,15 @@ ${context}`,
   await supabase.from("creator_ai_edits").insert({
     creator_id: profile.id,
     prompt: message,
-    action: toolUses.map((t: any) => t.name).join(", "),
+    action: toolCalls.map((t: any) => t.function?.name).join(", "),
     result: actions.join(", "),
   });
 
   const reply =
-    textBlocks.find((b) => b.type === "text")?.text ||
-    (actions.length > 0 ? `Feito! ${actions.join(", ")}.` : "Entendi, mas não encontrei nada para alterar. Pode ser mais específico?");
+    msg?.content ||
+    (actions.length > 0
+      ? `Feito! ${actions.join(", ")}.`
+      : "Entendi, mas não encontrei nada para alterar. Pode ser mais específico?");
 
   return NextResponse.json({ reply, actions, refreshLP: actions.length > 0 });
 }
