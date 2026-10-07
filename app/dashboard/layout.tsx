@@ -64,7 +64,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
 
         <div className="p-4 border-t border-white/5 flex items-center gap-3">
-          <UserButton afterSignOutUrl="/" />
+          <UserButton />
           <div>
             <p className="text-xs font-semibold">Minha Conta</p>
             <Link href="/dashboard/profile" className="text-[10px] text-muted-foreground hover:text-primary transition-colors">
