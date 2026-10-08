@@ -6,26 +6,53 @@ import { motion, AnimatePresence } from "motion/react";
 import { X, Mail, Lock, ArrowRight, User, Phone, Instagram, Upload, ShieldCheck, Eye, EyeOff } from "lucide-react";
 import { Button } from "./ui/button";
 import { useSignUp, useSignIn, useClerk } from "@clerk/nextjs";
-import { useRouter } from "next/navigation";
 
 interface LoginModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onSuccess?: () => void;
   initialView?: "login" | "register";
 }
 
-export function LoginModal({ isOpen, onClose, initialView = "login" }: LoginModalProps) {
-  const router = useRouter();
-  const { setActive } = useClerk();
-  const { isLoaded: isSignUpLoaded, signUp } = useSignUp();
-  const { isLoaded: isSignInLoaded, signIn } = useSignIn();
+type VerifyMode = "signup" | "signin_first" | "signin_mfa";
+
+const ERROR_PT: Record<string, string> = {
+  form_identifier_exists: "Já existe uma conta com esse e-mail. Faça login.",
+  form_identifier_not_found: "Não encontramos uma conta com esse e-mail.",
+  form_password_incorrect: "Senha incorreta.",
+  form_password_pwned: "Essa senha apareceu em vazamentos de dados. Escolha outra.",
+  form_password_length_too_short: "A senha precisa ter pelo menos 8 caracteres.",
+  form_password_not_strong_enough: "Senha fraca. Use letras, números e símbolos.",
+  form_password_validation_failed: "Senha inválida.",
+  form_param_format_invalid: "Formato inválido. Confira o e-mail digitado.",
+  form_code_incorrect: "Código incorreto.",
+  verification_expired: "O código expirou. Peça um novo.",
+  verification_failed: "Muitas tentativas. Peça um novo código.",
+  too_many_requests: "Muitas tentativas. Aguarde um pouco e tente de novo.",
+  captcha_invalid: "Falha na verificação anti-bot. Recarregue a página e tente de novo.",
+  captcha_missing_token: "Falha na verificação anti-bot. Recarregue a página e tente de novo.",
+  session_exists: "Você já está logado.",
+};
+
+function errMsg(e: any, fallback = "Algo deu errado. Tente novamente."): string {
+  if (!e) return fallback;
+  const first = e.errors?.[0] || e;
+  const code = first.code || e.code;
+  if (code && ERROR_PT[code]) return ERROR_PT[code];
+  return first.longMessage || first.message || e.message || fallback;
+}
+
+export function LoginModal({ isOpen, onClose, onSuccess, initialView = "login" }: LoginModalProps) {
+  const clerk = useClerk();
+  const { signUp } = useSignUp();
+  const { signIn } = useSignIn();
 
   const [view, setView] = useState<"login" | "register" | "forgot">(initialView);
   const [pendingVerification, setPendingVerification] = useState(false);
-  const [verificationType, setVerificationType] = useState<"signup" | "signin">("signup");
+  const [verifyMode, setVerifyMode] = useState<VerifyMode>("signup");
+  const [resetCodeSent, setResetCodeSent] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Form states
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -35,7 +62,7 @@ export function LoginModal({ isOpen, onClose, initialView = "login" }: LoginModa
   const [code, setCode] = useState("");
   const [foto, setFoto] = useState<File | null>(null);
   const [fotoPreview, setFotoPreview] = useState<string | null>(null);
-  
+
   const [errorMsg, setErrorMsg] = useState("");
   const [infoMsg, setInfoMsg] = useState("");
   const [resendCooldown, setResendCooldown] = useState(0);
@@ -45,6 +72,7 @@ export function LoginModal({ isOpen, onClose, initialView = "login" }: LoginModa
     if (isOpen) {
       setView(initialView);
       setPendingVerification(false);
+      setResetCodeSent(false);
       setErrorMsg("");
       setInfoMsg("");
       setResendCooldown(0);
@@ -53,293 +81,276 @@ export function LoginModal({ isOpen, onClose, initialView = "login" }: LoginModa
     }
   }, [isOpen, initialView]);
 
-  // Countdown for the "Reenviar código" button, so it isn't spammable
-  // (Clerk itself also rate-limits OTP sends, but a visible cooldown
-  // avoids the confusing "nothing happened" feeling when someone taps it
-  // repeatedly while waiting for a slow email).
   useEffect(() => {
     if (resendCooldown <= 0) return;
-    const timer = setInterval(() => {
-      setResendCooldown((s) => (s > 0 ? s - 1 : 0));
-    }, 1000);
+    const timer = setInterval(() => setResendCooldown((s) => (s > 0 ? s - 1 : 0)), 1000);
     return () => clearInterval(timer);
   }, [resendCooldown]);
 
-  // The code sometimes not arriving is a real, known limitation (Clerk's
-  // shared email-sending domain gets flagged as spam by some providers,
-  // and/or its own OTP rate limits) -- there used to be no way to ask for
-  // a new one short of closing the whole modal and starting over. This
-  // reuses the exact same "prepare verification" calls already used when
-  // the code is first sent (handleSignUp / handleSignIn below).
+  const notReady = () => {
+    setErrorMsg("Conectando ao servidor de autenticação... aguarde um segundo e tente de novo.");
+  };
+
+  const finish = async (resource: any) => {
+    const { error } = await resource.finalize();
+    if (error) {
+      setErrorMsg(errMsg(error));
+      return;
+    }
+    if (foto && clerk.user) {
+      try {
+        await clerk.user.setProfileImage({ file: foto });
+      } catch (e) {
+        console.error("Falha ao enviar foto de perfil:", e);
+      }
+    }
+    if (onSuccess) {
+      onSuccess();
+    } else {
+      onClose();
+      window.location.reload();
+    }
+  };
+
+  const sendCode = async (mode: VerifyMode) => {
+    if (mode === "signup") return signUp.verifications.sendEmailCode();
+    if (mode === "signin_first") return signIn.emailCode.sendCode();
+    return signIn.mfa.sendEmailCode();
+  };
+
   const handleResendCode = async () => {
     if (resendCooldown > 0 || isResending) return;
     setIsResending(true);
     setErrorMsg("");
     setInfoMsg("");
-    try {
-      if (verificationType === "signup" && signUp) {
-        if (signUp.verifications && typeof signUp.verifications.sendEmailCode === 'function') {
-          await signUp.verifications.sendEmailCode();
-        } else if (signUp.prepareEmailAddressVerification) {
-          await signUp.prepareEmailAddressVerification({ strategy: "email_code" });
-        } else {
-          await (signUp as any).prepareVerification({ strategy: "email_code" });
-        }
-      } else if (verificationType === "signin" && signIn) {
-        const s = signIn as any;
-        if (typeof s.prepareFirstFactor === "function") {
-          await s.prepareFirstFactor({ strategy: "email_code", emailAddressId: s.supportedFirstFactors?.find((f: any) => f.strategy === "email_code")?.emailAddressId });
-        } else if (typeof s.prepareSecondFactor === "function") {
-          await s.prepareSecondFactor({ strategy: "email_code" });
-        } else if (typeof s.prepareVerification === "function") {
-          await s.prepareVerification({ strategy: "email_code" });
-        } else if (s.emailCode && typeof s.emailCode.sendCode === "function") {
-          await s.emailCode.sendCode();
-        } else if (s.verifications && typeof s.verifications.sendEmailCode === "function") {
-          await s.verifications.sendEmailCode();
-        }
-      }
-      setInfoMsg("Código reenviado! Confira sua caixa de entrada (e o spam).");
+    const { error } = await sendCode(verifyMode);
+    if (error) setErrorMsg(errMsg(error, "Erro ao reenviar código."));
+    else {
+      setInfoMsg("Código reenviado! Confira sua caixa de entrada e o spam.");
       setResendCooldown(30);
-    } catch (e: any) {
-      const errs = e.errors || [];
-      setErrorMsg(errs.length > 0 ? (errs[0].longMessage || errs[0].message) : (e.message || "Erro ao reenviar código."));
-    } finally {
-      setIsResending(false);
     }
+    setIsResending(false);
   };
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
-    
     if (!email || !nome || !password) {
-      setErrorMsg("Por favor, preencha Nome, E-mail e Senha.");
+      setErrorMsg("Preencha Nome, E-mail e Senha.");
       return;
     }
+    if (password.length < 8) {
+      setErrorMsg("A senha precisa ter pelo menos 8 caracteres.");
+      return;
+    }
+    if (!signUp) return notReady();
 
-    if (!signUp) {
-      setErrorMsg("Conectando ao servidor de segurança... aguarde um segundo e tente novamente.");
-      return;
-    }
-    
     setIsLoading(true);
     setErrorMsg("");
-
+    setInfoMsg("");
     try {
-      const result = await signUp.create({
-        emailAddress: email,
-        password: password,
-        firstName: nome.split(" ")[0] || "",
-        lastName: nome.split(" ").slice(1).join(" ") || "",
-        unsafeMetadata: { telefone, instagram }
+      const [firstName, ...rest] = nome.trim().split(/\s+/);
+      const { error } = await signUp.password({
+        emailAddress: email.trim(),
+        password,
+        firstName,
+        lastName: rest.join(" ") || undefined,
+        unsafeMetadata: { telefone, instagram },
       });
-
-      if (result && result.status === "complete") {
-        onClose();
-        window.location.reload();
+      if (error) {
+        setErrorMsg(errMsg(error));
         return;
       }
-      
-      // Fallback para caso o signUp já esteja completo
+
       if (signUp.status === "complete") {
-        onClose();
-        window.location.reload();
+        await finish(signUp);
         return;
       }
 
-      // 2. Prepara a verificação por código no email
-      try {
-        if (signUp.verifications && typeof signUp.verifications.sendEmailCode === 'function') {
-           await signUp.verifications.sendEmailCode();
-        } else if (signUp.prepareEmailAddressVerification) {
-           await signUp.prepareEmailAddressVerification({ strategy: "email_code" });
-        } else if (result && (result as any).prepareEmailAddressVerification) {
-           await (result as any).prepareEmailAddressVerification({ strategy: "email_code" });
-        } else {
-           await (signUp as any).prepareVerification({ strategy: "email_code" });
-        }
-      } catch (e: any) {
-         console.error("Falha ao preparar verificação:", e);
-         throw new Error(`Erro ao enviar código: ${e.message}`);
+      const { error: sendErr } = await signUp.verifications.sendEmailCode();
+      if (sendErr) {
+        setErrorMsg(errMsg(sendErr, "Erro ao enviar o código por e-mail."));
+        return;
       }
 
+      setVerifyMode("signup");
       setPendingVerification(true);
+      setInfoMsg(`Enviamos um código para ${email.trim()}.`);
       setResendCooldown(30);
-    } catch (err: any) {
-      console.error("Erro no Clerk Sign Up:", err);
-      const errorMessage = err.errors?.[0]?.longMessage || err.errors?.[0]?.message || err.message || "Erro de conexão com o servidor de autenticação.";
-      setErrorMsg(errorMessage);
+    } catch (err) {
+      console.error("[signup]", err);
+      setErrorMsg(errMsg(err));
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleVerifySignUp = async (e: React.FormEvent) => {
+  const handleVerify = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!signUp) return;
-    setIsLoading(true);
-    setErrorMsg("");
-
-    try {
-      let result;
-      const errors = [];
-      
-      try { 
-         result = await (signUp as any).attemptEmailAddressVerification({ code }); 
-      } catch(e: any) { errors.push("1.attemptEmail: " + (e.message || "error")); }
-      
-      if (!result) {
-         try { 
-            result = await (signUp as any).attemptVerification({ strategy: "email_code", code }); 
-         } catch(e: any) { errors.push("2.attemptVerif: " + (e.message || "error")); }
-      }
-      
-      if (!result && signUp.verifications) {
-         try { 
-            result = await (signUp.verifications as any).verifyEmailCode({ code }); 
-         } catch(e: any) { errors.push("3.verifyEmail: " + (e.message || "error")); }
-      }
-      
-      if (!result) {
-         throw new Error("Falhas no Clerk: " + errors.join(" | "));
-      }
-      
-      if (result && result.status === "complete") {
-        onClose();
-        window.location.reload();
-      } else if (signUp.status === "complete") {
-        onClose();
-        window.location.reload();
-      } else if (result && result.status === "missing_requirements") {
-        setErrorMsg(`Quase lá! Faltam os campos obrigatórios no painel do Clerk: ${result.missingFields?.join(", ") || "desconhecidos"}`);
-      } else if (signUp.status === "missing_requirements") {
-        setErrorMsg(`Quase lá! Faltam os campos obrigatórios no painel do Clerk: ${signUp.missingFields?.join(", ") || "desconhecidos"}`);
-      } else {
-        setErrorMsg(`Status inesperado: ${result?.status || signUp.status}`);
-      }
-    } catch (err: any) {
-      console.error("Erro no Clerk Verify:", err);
-      setErrorMsg(err.errors?.[0]?.longMessage || err.errors?.[0]?.message || err.message || "Erro ao verificar código.");
-    } finally {
-      setIsLoading(false);
+    if (code.trim().length < 6) {
+      setErrorMsg("Digite o código de 6 dígitos.");
+      return;
     }
-  };
-
-  const handleVerifySignIn = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!signIn) return;
     setIsLoading(true);
     setErrorMsg("");
-
+    setInfoMsg("");
     try {
-      let result;
-      const s = signIn as any;
-      const errors = [];
-
-      try {
-        if (typeof s.attemptFirstFactor === "function") {
-          result = await s.attemptFirstFactor({ strategy: "email_code", code });
-        } else if (typeof s.attemptSecondFactor === "function") {
-          result = await s.attemptSecondFactor({ strategy: "email_code", code });
-        } else if (typeof s.attemptVerification === "function") {
-          result = await s.attemptVerification({ strategy: "email_code", code });
-        } else if (s.emailCode && typeof s.emailCode.attempt === "function") {
-          result = await s.emailCode.attempt({ code });
-        } else if (s.emailCode && typeof s.emailCode.verify === "function") {
-          result = await s.emailCode.verify({ code });
-        } else if (s.emailCode && typeof s.emailCode.verifyCode === "function") {
-          result = await s.emailCode.verifyCode({ code });
-        } else if (s.verifications && typeof s.verifications.verifyEmailCode === "function") {
-          result = await s.verifications.verifyEmailCode({ code });
-        } else {
-          throw new Error(`Método não encontrado. Chaves do signIn: ${Object.keys(s).join(", ")}. Chaves do emailCode: ${s.emailCode ? Object.keys(s.emailCode).join(", ") : "N/A"}`);
+      if (verifyMode === "signup") {
+        const { error } = await signUp.verifications.verifyEmailCode({ code: code.trim() });
+        if (error) {
+          setErrorMsg(errMsg(error, "Código inválido."));
+          return;
         }
-      } catch (err: any) {
-        throw err; // throw to be caught by the outer catch
+        if (signUp.status === "complete") {
+          await finish(signUp);
+        } else if (signUp.status === "missing_requirements") {
+          setErrorMsg(`Faltam campos obrigatórios no cadastro: ${signUp.missingFields?.join(", ") || "desconhecidos"}.`);
+        } else {
+          setErrorMsg(`Não foi possível concluir o cadastro (status: ${signUp.status}).`);
+        }
+        return;
       }
 
-      const status = result?.status || signIn.status;
-      if (status === "complete") {
-        onClose();
-        window.location.reload();
-      } else {
-        setErrorMsg(`Status inesperado: ${status}`);
+      const { error } =
+        verifyMode === "signin_first"
+          ? await signIn.emailCode.verifyCode({ code: code.trim() })
+          : await signIn.mfa.verifyEmailCode({ code: code.trim() });
+      if (error) {
+        setErrorMsg(errMsg(error, "Código inválido."));
+        return;
       }
-    } catch (err: any) {
-      console.error("Erro no Clerk Verify SignIn:", err);
-      setErrorMsg(err.errors?.[0]?.longMessage || err.errors?.[0]?.message || err.message || "Código inválido.");
+      if (signIn.status === "complete") await finish(signIn);
+      else setErrorMsg(`Não foi possível concluir o login (status: ${signIn.status}).`);
+    } catch (err) {
+      console.error("[verify]", err);
+      setErrorMsg(errMsg(err, "Código inválido."));
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Login usando Email e Senha
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
-
     if (!email || !password) {
-      setErrorMsg("Por favor, digite seu e-mail e senha.");
+      setErrorMsg("Digite seu e-mail e senha.");
       return;
     }
+    if (!signIn) return notReady();
 
-    if (!signIn) {
-      setErrorMsg("Conectando ao servidor... aguarde um segundo.");
-      return;
-    }
-    
     setIsLoading(true);
     setErrorMsg("");
-
+    setInfoMsg("");
     try {
-      const result = await signIn.create({
-        identifier: email,
-        password: password,
-      });
-
-      const status = result?.status || signIn.status;
-      const sessionId = result?.createdSessionId || signIn.createdSessionId;
-
-      if (status === "complete") {
-        onClose();
-        window.location.reload();
-      } else if (status === "needs_first_factor" || status === "needs_second_factor" || status === "needs_client_trust") {
-        // Envia o código para o email do usuário
-        try {
-           const s = signIn as any;
-           if (typeof s.prepareFirstFactor === "function") {
-              await s.prepareFirstFactor({ strategy: "email_code", emailAddressId: s.supportedFirstFactors?.find((f:any) => f.strategy === "email_code")?.emailAddressId });
-           } else if (s.prepareSecondFactor && typeof s.prepareSecondFactor === "function") {
-              await s.prepareSecondFactor({ strategy: "email_code" });
-           } else if (s.prepareVerification && typeof s.prepareVerification === "function") {
-              await s.prepareVerification({ strategy: "email_code" });
-           } else if (s.emailCode && typeof s.emailCode.sendCode === "function") {
-              await s.emailCode.sendCode();
-           } else if (s.verifications && typeof s.verifications.sendEmailCode === "function") {
-              await s.verifications.sendEmailCode();
-           } else {
-              throw new Error(`Método não encontrado. Chaves do signIn: ${Object.keys(s).join(", ")}`);
-           }
-           
-           setVerificationType("signin");
-           setPendingVerification(true);
-           setResendCooldown(30);
-        } catch (e: any) {
-           console.error("Erro ao preparar fator:", e);
-           const errs = e.errors || [];
-           const msg = errs.length > 0 ? errs[0].longMessage : e.message;
-           setErrorMsg(`Erro ao enviar código: ${msg || JSON.stringify(e)}`);
-        }
-      } else {
-        setErrorMsg(`Erro inesperado ao fazer login. Status: ${status}`);
-        console.error("DUMP SignIn result:", JSON.stringify(result));
+      const { error } = await signIn.password({ emailAddress: email.trim(), password });
+      if (error) {
+        setErrorMsg(errMsg(error, "E-mail ou senha incorretos."));
+        return;
       }
-    } catch (err: any) {
-      console.error("Erro no Clerk Sign In:", err);
-      setErrorMsg(err.errors?.[0]?.longMessage || err.errors?.[0]?.message || err.message || "Email ou senha incorretos.");
+
+      const status = signIn.status;
+      if (status === "complete") {
+        await finish(signIn);
+        return;
+      }
+
+      let mode: VerifyMode | null = null;
+      if (status === "needs_second_factor" || status === "needs_client_trust") {
+        const hasEmail = signIn.supportedSecondFactors?.some((f) => f.strategy === "email_code");
+        if (hasEmail) mode = "signin_mfa";
+      } else if (status === "needs_first_factor") {
+        const hasEmail = signIn.supportedFirstFactors?.some((f) => f.strategy === "email_code");
+        if (hasEmail) mode = "signin_first";
+      }
+
+      if (!mode) {
+        setErrorMsg(`Esse login exige uma verificação não suportada aqui (status: ${status}).`);
+        return;
+      }
+
+      const { error: sendErr } = await sendCode(mode);
+      if (sendErr) {
+        setErrorMsg(errMsg(sendErr, "Erro ao enviar o código por e-mail."));
+        return;
+      }
+      setVerifyMode(mode);
+      setPendingVerification(true);
+      setInfoMsg(`Enviamos um código para ${email.trim()}.`);
+      setResendCooldown(30);
+    } catch (err) {
+      console.error("[signin]", err);
+      setErrorMsg(errMsg(err, "E-mail ou senha incorretos."));
     } finally {
       setIsLoading(false);
     }
   };
+
+  const handleForgotSend = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email) {
+      setErrorMsg("Digite seu e-mail.");
+      return;
+    }
+    if (!signIn) return notReady();
+    setIsLoading(true);
+    setErrorMsg("");
+    setInfoMsg("");
+    try {
+      const { error } = await signIn.create({ identifier: email.trim() });
+      if (error) {
+        setErrorMsg(errMsg(error));
+        return;
+      }
+      const { error: sendErr } = await signIn.resetPasswordEmailCode.sendCode();
+      if (sendErr) {
+        setErrorMsg(errMsg(sendErr, "Erro ao enviar o código."));
+        return;
+      }
+      setResetCodeSent(true);
+      setInfoMsg(`Enviamos um código para ${email.trim()}.`);
+    } catch (err) {
+      setErrorMsg(errMsg(err, "Erro ao solicitar redefinição."));
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleForgotReset = async () => {
+    if (!code || !password) {
+      setErrorMsg("Preencha o código e a nova senha.");
+      return;
+    }
+    if (password.length < 8) {
+      setErrorMsg("A senha precisa ter pelo menos 8 caracteres.");
+      return;
+    }
+    setIsLoading(true);
+    setErrorMsg("");
+    setInfoMsg("");
+    try {
+      const { error } = await signIn.resetPasswordEmailCode.verifyCode({ code: code.trim() });
+      if (error) {
+        setErrorMsg(errMsg(error, "Código inválido."));
+        return;
+      }
+      const { error: pwErr } = await signIn.resetPasswordEmailCode.submitPassword({ password });
+      if (pwErr) {
+        setErrorMsg(errMsg(pwErr));
+        return;
+      }
+      if (signIn.status === "complete") await finish(signIn);
+      else setErrorMsg(`Senha alterada, mas o login não foi concluído (status: ${signIn.status}). Tente entrar.`);
+    } catch (err) {
+      setErrorMsg(errMsg(err, "Erro ao redefinir a senha."));
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const inputCls =
+    "w-full bg-black/50 border border-white/10 rounded-xl py-3 pl-10 pr-4 text-sm text-white placeholder:text-muted-foreground focus:outline-none focus:border-white/30 transition-colors";
+  const codeCls =
+    "w-full bg-black/50 border border-white/10 rounded-xl py-3 pl-10 pr-4 text-center tracking-[0.5em] text-lg text-white focus:outline-none focus:border-white/30 transition-colors";
+  const btnCls =
+    "w-full group h-12 uppercase font-bold tracking-widest text-[11px] rounded-xl mt-6 neon-glow metallic-gradient text-black hover:opacity-90 border-0";
 
   return (
     <AnimatePresence>
@@ -372,14 +383,16 @@ export function LoginModal({ isOpen, onClose, initialView = "login" }: LoginModa
 
               <div className="mb-8 text-center mt-2 relative z-10">
                 <h2 className="text-2xl font-bold tracking-tight mb-2 uppercase text-glow">
-                  {pendingVerification ? "Verificação" : view === "login" ? "Entrar" : "Criar Conta"}
+                  {pendingVerification ? "Verificação" : view === "login" ? "Entrar" : view === "forgot" ? "Recuperar Senha" : "Criar Conta"}
                 </h2>
                 <p className="text-sm text-muted-foreground font-light">
-                  {pendingVerification 
-                    ? "Digite o código que enviamos para o seu e-mail." 
-                    : view === "login" 
-                      ? "Acesse com seu e-mail e senha." 
-                      : "Preencha seus dados para se matricular."}
+                  {pendingVerification
+                    ? "Digite o código que enviamos para o seu e-mail."
+                    : view === "login"
+                      ? "Acesse com seu e-mail e senha."
+                      : view === "forgot"
+                        ? "Vamos te enviar um código para criar uma nova senha."
+                        : "Preencha seus dados para criar sua conta."}
                 </p>
               </div>
 
@@ -388,28 +401,32 @@ export function LoginModal({ isOpen, onClose, initialView = "login" }: LoginModa
                   {errorMsg}
                 </div>
               )}
+              {infoMsg && !errorMsg && (
+                <div className="bg-green-500/10 border border-green-500/30 text-green-400 p-3 rounded-lg text-sm mb-4 relative z-10 text-center">
+                  {infoMsg}
+                </div>
+              )}
 
-              {/* TELA DE VERIFICACAO DE CODIGO (SIGN IN / SIGN UP) */}
-              {pendingVerification && view !== "forgot" ? (
-                <form onSubmit={verificationType === "signup" ? handleVerifySignUp : handleVerifySignIn} className="space-y-4 relative z-10">
+              {pendingVerification ? (
+                <form onSubmit={handleVerify} className="space-y-4 relative z-10">
                   <div className="relative">
                     <ShieldCheck className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
                     <input
                       type="text"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
                       value={code}
-                      onChange={(e) => setCode(e.target.value)}
+                      onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
                       placeholder="Código de 6 dígitos"
-                      className="w-full bg-black/50 border border-white/10 rounded-xl py-3 pl-10 pr-4 text-center tracking-[0.5em] text-lg text-white focus:outline-none focus:border-white/30 transition-colors"
+                      className={codeCls}
                       maxLength={6}
+                      autoFocus
                     />
                   </div>
-                  <Button type="submit" disabled={isLoading} className="w-full group h-12 uppercase font-bold tracking-widest text-[11px] rounded-xl mt-6 neon-glow metallic-gradient text-black hover:opacity-90 border-0">
+                  <Button type="submit" disabled={isLoading} className={btnCls}>
                     <span>{isLoading ? "Verificando..." : "Confirmar Acesso"}</span>
                     <ArrowRight className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" />
                   </Button>
-                  {infoMsg && (
-                    <p className="text-center text-xs text-green-400">{infoMsg}</p>
-                  )}
                   <div className="text-center mt-4 flex flex-col items-center gap-2">
                     <button
                       type="button"
@@ -425,35 +442,22 @@ export function LoginModal({ isOpen, onClose, initialView = "login" }: LoginModa
                     </button>
                     <button
                       type="button"
-                      onClick={() => setPendingVerification(false)}
+                      onClick={() => {
+                        setPendingVerification(false);
+                        setCode("");
+                        setInfoMsg("");
+                        setErrorMsg("");
+                      }}
                       className="text-xs text-muted-foreground hover:text-white"
                     >
                       Voltar
                     </button>
                   </div>
                 </form>
-
               ) : view === "forgot" ? (
-                /* TELA DE ESQUECI A SENHA */
-                <form className="space-y-4 relative z-10" onSubmit={async (e) => {
-                  e.preventDefault();
-                  if (!email) { setErrorMsg("Digite seu e-mail."); return; }
-                  setIsLoading(true); setErrorMsg("");
-                  try {
-                    await signIn?.create({
-                      strategy: "reset_password_email_code",
-                      identifier: email,
-                    });
-                    setPendingVerification(true); // Usado aqui para mostrar a tela de codigo do reset
-                  } catch (err: any) {
-                    setErrorMsg(err.errors?.[0]?.message || "Erro ao solicitar reset.");
-                  } finally {
-                    setIsLoading(false);
-                  }
-                }}>
-                  {!pendingVerification ? (
+                <form className="space-y-4 relative z-10" onSubmit={handleForgotSend}>
+                  {!resetCodeSent ? (
                     <>
-                      <p className="text-sm text-center text-muted-foreground mb-4">Enviaremos um codigo para o seu e-mail para redefinir a senha.</p>
                       <div className="relative">
                         <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
                         <input
@@ -461,10 +465,10 @@ export function LoginModal({ isOpen, onClose, initialView = "login" }: LoginModa
                           value={email}
                           onChange={(e) => setEmail(e.target.value)}
                           placeholder="Seu E-mail"
-                          className="w-full bg-black/50 border border-white/10 rounded-xl py-3 pl-10 pr-4 text-sm text-white placeholder:text-muted-foreground focus:outline-none focus:border-white/30 transition-colors"
+                          className={inputCls}
                         />
                       </div>
-                      <Button type="submit" disabled={isLoading} className="w-full group h-12 uppercase font-bold tracking-widest text-[11px] rounded-xl mt-6 neon-glow metallic-gradient text-black hover:opacity-90 border-0">
+                      <Button type="submit" disabled={isLoading} className={btnCls}>
                         <span>{isLoading ? "Enviando..." : "Enviar Código"}</span>
                         <ArrowRight className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" />
                       </Button>
@@ -475,10 +479,12 @@ export function LoginModal({ isOpen, onClose, initialView = "login" }: LoginModa
                         <ShieldCheck className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
                         <input
                           type="text"
+                          inputMode="numeric"
+                          autoComplete="one-time-code"
                           value={code}
-                          onChange={(e) => setCode(e.target.value)}
+                          onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
                           placeholder="Código de 6 dígitos"
-                          className="w-full bg-black/50 border border-white/10 rounded-xl py-3 pl-10 pr-4 text-center tracking-[0.5em] text-lg text-white focus:outline-none focus:border-white/30 transition-colors"
+                          className={codeCls}
                           maxLength={6}
                         />
                       </div>
@@ -488,58 +494,42 @@ export function LoginModal({ isOpen, onClose, initialView = "login" }: LoginModa
                           type="password"
                           value={password}
                           onChange={(e) => setPassword(e.target.value)}
-                          placeholder="Nova Senha"
-                          className="w-full bg-black/50 border border-white/10 rounded-xl py-3 pl-10 pr-12 text-sm text-white placeholder:text-muted-foreground focus:outline-none focus:border-white/30 transition-colors"
+                          placeholder="Nova Senha (mínimo 8 caracteres)"
+                          className={inputCls}
                         />
                       </div>
-                      <Button 
-                        type="button" 
-                        onClick={async () => {
-                          if (!code || !password) { setErrorMsg("Preencha o código e a nova senha."); return; }
-                          setIsLoading(true); setErrorMsg("");
-                          try {
-                            const result = await signIn?.attemptFirstFactor({
-                              strategy: "reset_password_email_code",
-                              code,
-                              password,
-                            });
-                            if (result?.status === "complete") {
-                              setActive({ session: result.createdSessionId });
-                              onClose();
-                              window.location.reload();
-                            }
-                          } catch (err: any) {
-                            setErrorMsg(err.errors?.[0]?.message || "Código inválido ou erro ao redefinir.");
-                          } finally {
-                            setIsLoading(false);
-                          }
-                        }}
-                        disabled={isLoading} 
-                        className="w-full group h-12 uppercase font-bold tracking-widest text-[11px] rounded-xl mt-2 neon-glow metallic-gradient text-black hover:opacity-90 border-0"
-                      >
+                      <Button type="button" onClick={handleForgotReset} disabled={isLoading} className={btnCls}>
                         <span>{isLoading ? "Salvando..." : "Redefinir Senha"}</span>
                         <ArrowRight className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" />
                       </Button>
                     </>
                   )}
                   <div className="text-center mt-4">
-                    <button type="button" onClick={() => { setView("login"); setPendingVerification(false); }} className="text-xs text-muted-foreground hover:text-white">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setView("login");
+                        setResetCodeSent(false);
+                        setErrorMsg("");
+                        setInfoMsg("");
+                      }}
+                      className="text-xs text-muted-foreground hover:text-white"
+                    >
                       Voltar para o Login
                     </button>
                   </div>
                 </form>
-
               ) : view === "login" ? (
-                /* TELA DE LOGIN */
                 <form className="space-y-4 relative z-10" onSubmit={handleSignIn}>
                   <div className="relative">
                     <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
                     <input
                       type="email"
+                      autoComplete="email"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       placeholder="Seu E-mail"
-                      className="w-full bg-black/50 border border-white/10 rounded-xl py-3 pl-10 pr-4 text-sm text-white placeholder:text-muted-foreground focus:outline-none focus:border-white/30 transition-colors"
+                      className={inputCls}
                     />
                   </div>
 
@@ -547,10 +537,11 @@ export function LoginModal({ isOpen, onClose, initialView = "login" }: LoginModa
                     <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
                     <input
                       type={showPassword ? "text" : "password"}
+                      autoComplete="current-password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="Sua Senha"
-                      className="w-full bg-black/50 border border-white/10 rounded-xl py-3 pl-10 pr-12 text-sm text-white placeholder:text-muted-foreground focus:outline-none focus:border-white/30 transition-colors"
+                      className={`${inputCls} pr-12`}
                     />
                     <button
                       type="button"
@@ -562,26 +553,33 @@ export function LoginModal({ isOpen, onClose, initialView = "login" }: LoginModa
                   </div>
 
                   <div className="flex justify-end">
-                    <button type="button" onClick={() => { setView("forgot"); setPendingVerification(false); }} className="text-xs text-muted-foreground hover:text-primary transition-colors">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setView("forgot");
+                        setResetCodeSent(false);
+                        setErrorMsg("");
+                        setInfoMsg("");
+                      }}
+                      className="text-xs text-muted-foreground hover:text-primary transition-colors"
+                    >
                       Esqueceu a senha?
                     </button>
                   </div>
 
-                  <Button type="submit" disabled={isLoading} className="w-full group h-12 uppercase font-bold tracking-widest text-[11px] rounded-xl mt-6 neon-glow metallic-gradient text-black hover:opacity-90 border-0">
+                  <Button type="submit" disabled={isLoading} className={btnCls}>
                     <span>{isLoading ? "Entrando..." : "Acessar Plataforma"}</span>
                     <ArrowRight className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" />
                   </Button>
                 </form>
-
               ) : (
-                /* TELA DE CADASTRO */
                 <form className="space-y-4 relative z-10" onSubmit={handleSignUp}>
                   <div className="flex justify-center mb-6">
                     <label className="w-24 h-24 rounded-full bg-white/5 border border-white/10 flex flex-col items-center justify-center cursor-pointer hover:bg-white/10 transition-all group relative overflow-hidden">
-                      <input 
-                        type="file" 
-                        accept="image/*" 
-                        className="hidden" 
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
                         onChange={(e) => {
                           const file = e.target.files?.[0];
                           if (file) {
@@ -598,11 +596,9 @@ export function LoginModal({ isOpen, onClose, initialView = "login" }: LoginModa
                           <span className="text-[9px] text-muted-foreground uppercase tracking-wider group-hover:text-white transition-colors">Foto</span>
                         </>
                       )}
-                      
-                      {/* Overlay para trocar foto se ja houver uma */}
                       {fotoPreview && (
                         <div className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                           <Upload className="w-5 h-5 text-white" />
+                          <Upload className="w-5 h-5 text-white" />
                         </div>
                       )}
                     </label>
@@ -610,56 +606,33 @@ export function LoginModal({ isOpen, onClose, initialView = "login" }: LoginModa
 
                   <div className="relative">
                     <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-                    <input
-                      type="text"
-                      value={nome}
-                      onChange={(e) => setNome(e.target.value)}
-                      placeholder="Nome Completo"
-                      className="w-full bg-black/50 border border-white/10 rounded-xl py-3 pl-10 pr-4 text-sm text-white placeholder:text-muted-foreground focus:outline-none focus:border-white/30 transition-colors"
-                    />
+                    <input type="text" autoComplete="name" value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Nome Completo" className={inputCls} />
                   </div>
 
                   <div className="relative">
                     <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-                    <input
-                      type="tel"
-                      value={telefone}
-                      onChange={(e) => setTelefone(e.target.value)}
-                      placeholder="Telefone (WhatsApp)"
-                      className="w-full bg-black/50 border border-white/10 rounded-xl py-3 pl-10 pr-4 text-sm text-white placeholder:text-muted-foreground focus:outline-none focus:border-white/30 transition-colors"
-                    />
+                    <input type="tel" autoComplete="tel" value={telefone} onChange={(e) => setTelefone(e.target.value)} placeholder="Telefone (WhatsApp)" className={inputCls} />
                   </div>
 
                   <div className="relative">
                     <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-                    <input
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="Seu E-mail principal"
-                      className="w-full bg-black/50 border border-white/10 rounded-xl py-3 pl-10 pr-4 text-sm text-white placeholder:text-muted-foreground focus:outline-none focus:border-white/30 transition-colors"
-                    />
+                    <input type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Seu E-mail principal" className={inputCls} />
                   </div>
 
                   <div className="relative">
                     <Instagram className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-                    <input
-                      type="text"
-                      value={instagram}
-                      onChange={(e) => setInstagram(e.target.value)}
-                      placeholder="Link do Instagram (@seu.perfil)"
-                      className="w-full bg-black/50 border border-white/10 rounded-xl py-3 pl-10 pr-4 text-sm text-white placeholder:text-muted-foreground focus:outline-none focus:border-white/30 transition-colors"
-                    />
+                    <input type="text" value={instagram} onChange={(e) => setInstagram(e.target.value)} placeholder="Instagram (@seu.perfil)" className={inputCls} />
                   </div>
-                  
+
                   <div className="relative">
                     <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
                     <input
                       type={showPassword ? "text" : "password"}
+                      autoComplete="new-password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      placeholder="Crie uma Senha (minimo 8 caracteres)"
-                      className="w-full bg-black/50 border border-white/10 rounded-xl py-3 pl-10 pr-12 text-sm text-white placeholder:text-muted-foreground focus:outline-none focus:border-white/30 transition-colors"
+                      placeholder="Crie uma Senha (mínimo 8 caracteres)"
+                      className={`${inputCls} pr-12`}
                     />
                     <button
                       type="button"
@@ -670,7 +643,10 @@ export function LoginModal({ isOpen, onClose, initialView = "login" }: LoginModa
                     </button>
                   </div>
 
-                  <Button type="submit" disabled={isLoading} className="w-full group h-12 uppercase font-bold tracking-widest text-[11px] rounded-xl mt-6 neon-glow metallic-gradient text-black hover:opacity-90 border-0">
+                  {/* Clerk bot protection renders its challenge here in custom flows */}
+                  <div id="clerk-captcha" />
+
+                  <Button type="submit" disabled={isLoading} className={btnCls}>
                     <span>{isLoading ? "Processando..." : "Criar Conta"}</span>
                     <ArrowRight className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" />
                   </Button>
@@ -680,12 +656,16 @@ export function LoginModal({ isOpen, onClose, initialView = "login" }: LoginModa
               {view !== "forgot" && !pendingVerification && (
                 <div className="mt-8 pt-6 border-t border-white/5 text-center relative z-10">
                   <p className="text-sm text-muted-foreground font-light">
-                    {view === "login" ? "Ainda nao tem uma conta? " : "Ja possui uma conta? "}
-                    <button 
-                      onClick={() => setView(view === "login" ? "register" : "login")}
+                    {view === "login" ? "Ainda não tem uma conta? " : "Já possui uma conta? "}
+                    <button
+                      onClick={() => {
+                        setView(view === "login" ? "register" : "login");
+                        setErrorMsg("");
+                        setInfoMsg("");
+                      }}
                       className="text-white hover:underline font-medium"
                     >
-                      {view === "login" ? "Matricule-se" : "Fazer Login"}
+                      {view === "login" ? "Criar conta" : "Fazer Login"}
                     </button>
                   </p>
                 </div>

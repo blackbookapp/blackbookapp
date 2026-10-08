@@ -1,8 +1,6 @@
-"use client";
-import { useRouter } from "next/navigation";
-import { useEffect } from "react";
-export default function SignInRedirect() {
-  const router = useRouter();
-  useEffect(() => { router.replace("/entrar"); }, []);
-  return null;
+import { redirect } from "next/navigation";
+
+export default async function SignInRedirect({ searchParams }: { searchParams: Promise<{ redirect_url?: string }> }) {
+  const { redirect_url } = await searchParams;
+  redirect(redirect_url ? `/entrar?redirect_url=${encodeURIComponent(redirect_url)}` : "/entrar");
 }
