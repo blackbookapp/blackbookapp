@@ -91,6 +91,12 @@ RETURNS void LANGUAGE sql AS $$
   WHERE course_id = p_course_id AND code = p_code;
 $$;
 
+-- ── Storage: bucket público "media" (foto de perfil e imagens da LP) ──
+--    O upload é feito só pelo servidor (service role); a leitura é pública.
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES ('media', 'media', true, 10485760, ARRAY['image/jpeg','image/png','image/webp','image/gif','image/avif'])
+ON CONFLICT (id) DO UPDATE SET public = true;
+
 -- ── RLS: novas tabelas só acessíveis pelo servidor (service role) ──
 ALTER TABLE creator_lessons         ENABLE ROW LEVEL SECURITY;
 ALTER TABLE creator_enrollments     ENABLE ROW LEVEL SECURITY;
