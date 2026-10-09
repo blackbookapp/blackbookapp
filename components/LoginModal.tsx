@@ -21,7 +21,6 @@ const ERROR_PT: Record<string, string> = {
   form_identifier_not_found: "Não encontramos uma conta com esse e-mail.",
   form_password_incorrect: "Senha incorreta.",
   form_password_pwned: "Essa senha apareceu em vazamentos de dados. Escolha outra.",
-  form_password_length_too_short: "A senha precisa ter pelo menos 8 caracteres.",
   form_password_not_strong_enough: "Senha fraca. Use letras, números e símbolos.",
   form_password_validation_failed: "Senha inválida.",
   form_param_format_invalid: "Formato inválido. Confira o e-mail digitado.",
@@ -38,6 +37,10 @@ function errMsg(e: any, fallback = "Algo deu errado. Tente novamente."): string 
   if (!e) return fallback;
   const first = e.errors?.[0] || e;
   const code = first.code || e.code;
+  if (code === "form_password_length_too_short") {
+    const min = String(first.longMessage || first.message || "").match(/\d+/)?.[0];
+    return min ? `A senha precisa ter pelo menos ${min} caracteres.` : "A senha é muito curta.";
+  }
   if (code && ERROR_PT[code]) return ERROR_PT[code];
   return first.longMessage || first.message || e.message || fallback;
 }
@@ -136,10 +139,6 @@ export function LoginModal({ isOpen, onClose, onSuccess, initialView = "login" }
     e.preventDefault();
     if (!email || !nome || !password) {
       setErrorMsg("Preencha Nome, E-mail e Senha.");
-      return;
-    }
-    if (password.length < 8) {
-      setErrorMsg("A senha precisa ter pelo menos 8 caracteres.");
       return;
     }
     if (!signUp) return notReady();
@@ -318,10 +317,6 @@ export function LoginModal({ isOpen, onClose, onSuccess, initialView = "login" }
       setErrorMsg("Preencha o código e a nova senha.");
       return;
     }
-    if (password.length < 8) {
-      setErrorMsg("A senha precisa ter pelo menos 8 caracteres.");
-      return;
-    }
     setIsLoading(true);
     setErrorMsg("");
     setInfoMsg("");
@@ -494,7 +489,7 @@ export function LoginModal({ isOpen, onClose, onSuccess, initialView = "login" }
                           type="password"
                           value={password}
                           onChange={(e) => setPassword(e.target.value)}
-                          placeholder="Nova Senha (mínimo 8 caracteres)"
+                          placeholder="Nova Senha"
                           className={inputCls}
                         />
                       </div>
@@ -631,7 +626,7 @@ export function LoginModal({ isOpen, onClose, onSuccess, initialView = "login" }
                       autoComplete="new-password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      placeholder="Crie uma Senha (mínimo 8 caracteres)"
+                      placeholder="Crie uma Senha"
                       className={`${inputCls} pr-12`}
                     />
                     <button
