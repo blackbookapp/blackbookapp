@@ -591,7 +591,16 @@ function PainelContent() {
   useEffect(() => {
     if (!isLoaded || !userId) return;
 
-    fetch(`/api/creator?me=1`)
+    const sessionId = params.get("session_id");
+    const confirmed = sessionId
+      ? fetch("/api/stripe/confirm-activation", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ session_id: sessionId }),
+        }).catch(() => null)
+      : Promise.resolve(null);
+
+    confirmed.then(() => fetch(`/api/creator?me=1`))
       .then((r) => r.json())
       .then((data) => {
         if (data.profile) setProfile(data.profile);
