@@ -1,56 +1,114 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
-import { createClient } from "@supabase/supabase-js";
+import { auth, currentUser } from "@clerk/nextjs/server";
+import { db, priceToCents, PLATFORM_FEE_PERCENT, appUrl } from "@/lib/creator-server";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: "2026-07-29.dahlia" as any });
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+
+async function findCoupon(courseId: string, rawCode: string) {
+  const code = rawCode.trim().toUpperCase();
+  if (!code) return null;
+  const { data } = await db
+    .from("creator_coupons")
+    .select("*")
+    .eq("course_id", courseId)
+    .eq("code", code)
+    .eq("active", true)
+    .maybeSingle();
+  if (!data) return null;
+  if (data.expires_at && new Date(data.expires_at) < new Date()) return null;
+  if (data.max_uses && data.uses >= data.max_uses) return null;
+  return data;
+}
+
+async function loadCourse(slug: string) {
+  const { data: profile } = await db
+    .from("creator_profiles")
+    .select("id, name, stripe_account_id, stripe_onboarding_done, creator_courses(*)")
+    .eq("slug", slug)
+    .maybeSingle();
+  return { profile, course: profile?.creator_courses?.[0] ?? null };
+}
+
+// GET /api/stripe/checkout?slug=x&coupon=y — valida cupom e devolve o preço final
+export async function GET(req: NextRequest) {
+  const slug = req.nextUrl.searchParams.get("slug") || "";
+  const code = req.nextUrl.searchParams.get("coupon") || "";
+  const { course } = await loadCourse(slug);
+  if (!course) return NextResponse.json({ valid: false }, { status: 404 });
+  const coupon = await findCoupon(course.id, code);
+  if (!coupon) return NextResponse.json({ valid: false });
+  const base = priceToCents(course.price);
+  const final = Math.round(base * (1 - coupon.percent_off / 100));
+  return NextResponse.json({ valid: true, code: coupon.code, percent_off: coupon.percent_off, final_cents: final });
+}
 
 export async function POST(req: NextRequest) {
-  const { slug } = await req.json();
+  const { slug, coupon: couponCode } = await req.json();
+  const { profile, course } = await loadCourse(slug);
 
-  const { data: profile } = await supabase
-    .from("creator_profiles")
-    .select("*, creator_courses(*)")
-    .eq("slug", slug)
-    .single();
-
-  if (!profile || !profile.stripe_account_id) {
-    return NextResponse.json({ error: "Creator not found or Stripe not connected" }, { status: 404 });
+  if (!profile || !course) {
+    return NextResponse.json({ error: "Curso não encontrado." }, { status: 404 });
+  }
+  if (!course.is_published) {
+    return NextResponse.json({ error: "Este curso ainda não está à venda." }, { status: 400 });
+  }
+  if (!profile.stripe_account_id || !profile.stripe_onboarding_done) {
+    return NextResponse.json(
+      { error: "O criador ainda não ativou o recebimento de pagamentos. Tente novamente mais tarde." },
+      { status: 400 }
+    );
   }
 
-  const course = profile.creator_courses?.[0];
-  if (!course) return NextResponse.json({ error: "No course found" }, { status: 404 });
+  const baseCents = priceToCents(course.price);
+  if (baseCents < 100) {
+    return NextResponse.json({ error: "Preço do curso inválido." }, { status: 400 });
+  }
 
-  const priceInCents = Math.round(parseFloat(course.price.replace(/[^0-9,]/g, "").replace(",", ".")) * 100);
-  const feePct = Number(process.env.PLATFORM_FEE_PERCENT ?? 8) / 100;
-  const applicationFee = Math.round(priceInCents * feePct);
+  const coupon = couponCode ? await findCoupon(course.id, couponCode) : null;
+  if (couponCode && !coupon) {
+    return NextResponse.json({ error: "Cupom inválido ou expirado." }, { status: 400 });
+  }
+  const amount = coupon ? Math.round(baseCents * (1 - coupon.percent_off / 100)) : baseCents;
+  const applicationFee = Math.round(amount * (PLATFORM_FEE_PERCENT / 100));
 
-  const session = await stripe.checkout.sessions.create(
-    {
-      payment_method_types: ["card"],
-      line_items: [
-        {
-          price_data: {
-            currency: "brl",
-            product_data: { name: course.title, description: course.main_promise || undefined },
-            unit_amount: priceInCents,
+  const { userId } = await auth();
+  const user = userId ? await currentUser() : null;
+  const email = user?.primaryEmailAddress?.emailAddress;
+
+  const session = await stripe.checkout.sessions.create({
+    mode: "payment",
+    payment_method_types: ["card"],
+    ...(email ? { customer_email: email } : {}),
+    line_items: [
+      {
+        price_data: {
+          currency: "brl",
+          product_data: {
+            name: course.title,
+            description: course.main_promise || `Curso de ${profile.name}`,
           },
-          quantity: 1,
+          unit_amount: amount,
         },
-      ],
-      mode: "payment",
-      success_url: `${process.env.NEXT_PUBLIC_APP_URL}/c/${slug}?success=true`,
-      cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/c/${slug}`,
-      payment_intent_data: {
-        application_fee_amount: applicationFee,
-        transfer_data: { destination: profile.stripe_account_id },
+        quantity: 1,
       },
-      metadata: { creator_slug: slug, course_id: course.id },
-    }
-  );
+    ],
+    success_url: `${appUrl()}/c/${slug}/obrigado?session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${appUrl()}/c/${slug}`,
+    payment_intent_data: {
+      application_fee_amount: applicationFee,
+      transfer_data: { destination: profile.stripe_account_id },
+    },
+    metadata: {
+      type: "course_sale",
+      creator_slug: slug,
+      creator_id: profile.id,
+      course_id: course.id,
+      platform_fee: String(applicationFee),
+      coupon: coupon?.code || "",
+      user_id: userId || "",
+    },
+  });
 
   return NextResponse.json({ url: session.url });
 }

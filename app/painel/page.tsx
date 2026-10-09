@@ -15,6 +15,23 @@ import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { useClerk } from "@clerk/nextjs";
 import { useSearchParams } from "next/navigation";
+import { ListVideo, Ticket, GraduationCap } from "lucide-react";
+import { ConteudoTab } from "@/components/painel/ConteudoTab";
+import { AlunosTab } from "@/components/painel/AlunosTab";
+import { CuponsTab } from "@/components/painel/CuponsTab";
+import { StatsPanel } from "@/components/painel/StatsPanel";
+
+const PUBLIC_HOST = (process.env.NEXT_PUBLIC_APP_URL || "https://blackbookapp.com.br").replace(/^https?:\/\//, "").replace(/\/$/, "");
+
+const NAV_ITEMS = [
+  { id: "dashboard", icon: LayoutDashboard, label: "Dashboard" },
+  { id: "conteudo", icon: ListVideo, label: "Conteúdo" },
+  { id: "alunos", icon: GraduationCap, label: "Alunos" },
+  { id: "cupons", icon: Ticket, label: "Cupons" },
+  { id: "editor", icon: Bot, label: "Editor IA" },
+  { id: "midias", icon: Video, label: "Mídias" },
+  { id: "config", icon: Settings, label: "Configurações" },
+];
 
 // ─── Types ───────────────────────────────────────────────────
 interface CreatorProfile {
@@ -48,15 +65,27 @@ interface Sale {
 // ─── Sidebar ─────────────────────────────────────────────────
 function Sidebar({ active, setActive, slug }: { active: string; setActive: (v: string) => void; slug: string }) {
   const { signOut } = useClerk();
-  const navItems = [
-    { id: "dashboard", icon: <LayoutDashboard className="w-4 h-4" />, label: "Dashboard" },
-    { id: "editor", icon: <Bot className="w-4 h-4" />, label: "Editor IA" },
-    { id: "midias", icon: <Video className="w-4 h-4" />, label: "Mídias" },
-    { id: "config", icon: <Settings className="w-4 h-4" />, label: "Configurações" },
-  ];
 
   return (
-    <aside className="w-60 min-h-screen bg-[#0a0a0a] border-r border-white/8 flex flex-col fixed left-0 top-0 z-40">
+    <>
+    <div className="lg:hidden fixed top-0 inset-x-0 z-40 bg-[#0a0a0a]/95 backdrop-blur border-b border-white/8">
+      <div className="flex items-center justify-between px-4 h-12">
+        <span className="font-black text-sm tracking-tighter uppercase">Blackbook</span>
+        <button onClick={() => signOut()} className="text-xs text-muted-foreground flex items-center gap-1">
+          <LogOut className="w-3.5 h-3.5" /> Sair
+        </button>
+      </div>
+      <nav className="flex gap-1 overflow-x-auto px-3 pb-2">
+        {NAV_ITEMS.map(({ id, icon: Icon, label }) => (
+          <button key={id} onClick={() => setActive(id)}
+            className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap",
+              active === id ? "bg-primary/15 text-primary" : "text-muted-foreground")}>
+            <Icon className="w-3.5 h-3.5" /> {label}
+          </button>
+        ))}
+      </nav>
+    </div>
+    <aside className="w-60 min-h-screen bg-[#0a0a0a] border-r border-white/8 hidden lg:flex flex-col fixed left-0 top-0 z-40">
       {/* Logo */}
       <div className="px-5 py-5 border-b border-white/8">
         <Link href="/vendas" className="flex items-center gap-2">
@@ -69,16 +98,16 @@ function Sidebar({ active, setActive, slug }: { active: string; setActive: (v: s
 
       {/* Nav */}
       <nav className="flex-1 px-3 py-4 space-y-1">
-        {navItems.map((item) => (
-          <button key={item.id} onClick={() => setActive(item.id)}
+        {NAV_ITEMS.map(({ id, icon: Icon, label }) => (
+          <button key={id} onClick={() => setActive(id)}
             className={cn(
               "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all",
-              active === item.id
+              active === id
                 ? "bg-primary/15 text-primary"
                 : "text-muted-foreground hover:bg-white/5 hover:text-foreground"
             )}>
-            {item.icon}
-            {item.label}
+            <Icon className="w-4 h-4" />
+            {label}
           </button>
         ))}
       </nav>
@@ -99,11 +128,14 @@ function Sidebar({ active, setActive, slug }: { active: string; setActive: (v: s
         </button>
       </div>
     </aside>
+    </>
   );
 }
 
 // ─── Dashboard Tab ────────────────────────────────────────────
-function DashboardTab({ profile, sales }: { profile: CreatorProfile; sales: Sale[] }) {
+function DashboardTab({ profile, sales, lessonCount, setActive }: {
+  profile: CreatorProfile; sales: Sale[]; lessonCount: number | null; setActive: (v: string) => void;
+}) {
   const totalEarned = sales.filter(s => s.status === "paid").reduce((a, s) => a + s.creator_amount, 0);
   const thisMonth = sales.filter(s => {
     const d = new Date(s.created_at);
@@ -113,10 +145,11 @@ function DashboardTab({ profile, sales }: { profile: CreatorProfile; sales: Sale
 
   const course = profile.creator_courses?.[0];
 
-  const checklist = [
-    { done: !!profile.name && !!profile.bio, label: "Perfil preenchido", href: "#" },
+  const checklist: { done: boolean; label: string; href?: string; tab?: string }[] = [
+    { done: !!profile.name && !!profile.bio, label: "Perfil preenchido", tab: "editor" },
     { done: !!course?.title, label: "Curso criado", href: "/criar" },
-    { done: !!course?.is_published, label: "LP publicada", href: `/c/${profile.slug}` },
+    { done: (lessonCount ?? 0) > 0, label: "Aulas adicionadas", tab: "conteudo" },
+    { done: !!course?.is_published, label: "LP publicada", href: "/criar" },
     { done: !!profile.stripe_onboarding_done, label: "Stripe conectado (para receber pagamentos)", href: "/api/stripe/connect" },
   ];
 
@@ -133,12 +166,11 @@ function DashboardTab({ profile, sales }: { profile: CreatorProfile; sales: Sale
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {[
-          { icon: <DollarSign className="w-5 h-5" />, label: "Total ganho", value: `R$ ${(totalEarned / 100).toFixed(2).replace(".", ",")}`, color: "text-green-400" },
+          { icon: <DollarSign className="w-5 h-5" />, label: "Total ganho (líquido)", value: `R$ ${(totalEarned / 100).toFixed(2).replace(".", ",")}`, color: "text-green-400" },
           { icon: <TrendingUp className="w-5 h-5" />, label: "Este mês", value: `R$ ${(thisMonth / 100).toFixed(2).replace(".", ",")}`, color: "text-primary" },
           { icon: <Users className="w-5 h-5" />, label: "Vendas", value: sales.filter(s => s.status === "paid").length.toString(), color: "text-blue-400" },
-          { icon: <Star className="w-5 h-5" />, label: "Avaliação", value: "—", color: "text-yellow-400" },
         ].map((stat) => (
           <div key={stat.label} className="glass rounded-2xl border border-white/10 p-5">
             <div className={cn("mb-3", stat.color)}>{stat.icon}</div>
@@ -147,6 +179,8 @@ function DashboardTab({ profile, sales }: { profile: CreatorProfile; sales: Sale
           </div>
         ))}
       </div>
+
+      <StatsPanel />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Checklist */}
@@ -162,11 +196,15 @@ function DashboardTab({ profile, sales }: { profile: CreatorProfile; sales: Sale
                   ? <CheckCircle className="w-4 h-4 text-green-400 shrink-0" />
                   : <AlertCircle className="w-4 h-4 text-yellow-400 shrink-0" />}
                 <span className={item.done ? "text-foreground/70 line-through" : ""}>{item.label}</span>
-                {!item.done && (
+                {!item.done && (item.tab ? (
+                  <button onClick={() => setActive(item.tab!)} className="ml-auto text-primary hover:underline text-xs font-bold">
+                    Fazer <ArrowRight className="w-3 h-3 inline" />
+                  </button>
+                ) : (
                   <a href={item.href} className="ml-auto text-primary hover:underline text-xs font-bold">
                     Fazer <ArrowRight className="w-3 h-3 inline" />
                   </a>
-                )}
+                ))}
               </div>
             ))}
           </div>
@@ -207,7 +245,7 @@ function DashboardTab({ profile, sales }: { profile: CreatorProfile; sales: Sale
         <div className="glass rounded-2xl border border-primary/30 p-5 bg-primary/5 flex items-center justify-between">
           <div>
             <p className="text-xs font-bold uppercase tracking-widest text-primary mb-1">Sua LP pública</p>
-            <p className="font-mono text-sm">blackbook.app/c/{profile.slug}</p>
+            <p className="font-mono text-sm break-all">{PUBLIC_HOST}/c/{profile.slug}</p>
           </div>
           <div className="flex gap-2">
             <Button variant="outline" size="sm" onClick={() => navigator.clipboard.writeText(`${window.location.origin}/c/${profile.slug}`)}
@@ -344,7 +382,7 @@ function EditorTab({ profile }: { profile: CreatorProfile }) {
               <div className="w-2.5 h-2.5 rounded-full bg-yellow-500/60" />
               <div className="w-2.5 h-2.5 rounded-full bg-green-500/60" />
             </div>
-            <span className="text-xs text-muted-foreground font-mono">blackbook.app/c/{profile.slug}</span>
+            <span className="text-xs text-muted-foreground font-mono">{PUBLIC_HOST}/c/{profile.slug}</span>
           </div>
           <button onClick={() => setLpKey((k) => k + 1)} className="text-muted-foreground hover:text-foreground transition-colors">
             <RefreshCw className="w-3.5 h-3.5" />
@@ -519,23 +557,14 @@ function ConfigTab({ profile }: { profile: CreatorProfile }) {
             <p className="text-xs text-muted-foreground mt-0.5">Use seu próprio domínio (ex: meucurso.com.br)</p>
           </div>
         </div>
-        <div className="flex gap-2">
-          <input placeholder="meucurso.com.br"
-            className="flex-1 bg-white/5 border border-white/15 rounded-xl px-4 py-2.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:border-primary/40" />
-          <Button variant="outline" className="text-[10px] tracking-widest uppercase border-white/20 rounded-xl h-[42px]">
-            Salvar
-          </Button>
-        </div>
-        <p className="text-xs text-muted-foreground mt-3">
-          Após salvar, aponte um CNAME do seu domínio para <code className="text-primary">blackbook.app</code>
-        </p>
+        <p className="text-xs font-bold uppercase tracking-widest text-yellow-400">Em breve</p>
       </div>
 
       {/* Sua LP atual */}
       <div className="glass rounded-2xl border border-white/10 p-6">
         <p className="font-black mb-3">Sua LP pública</p>
         <div className="flex items-center gap-3 bg-white/5 rounded-xl px-4 py-3">
-          <span className="font-mono text-sm text-muted-foreground flex-1">blackbook.app/c/{profile.slug}</span>
+          <span className="font-mono text-sm text-muted-foreground flex-1 break-all">{PUBLIC_HOST}/c/{profile.slug}</span>
           <button onClick={() => navigator.clipboard.writeText(`${window.location.origin}/c/${profile.slug}`)}
             className="text-xs text-primary hover:underline font-bold">Copiar</button>
           <Link href={`/c/${profile.slug}`} target="_blank" className="text-xs text-primary hover:underline font-bold flex items-center gap-1">
@@ -557,11 +586,12 @@ function PainelContent() {
   const [sales, setSales] = useState<Sale[]>([]);
   const [active, setActive] = useState("dashboard");
   const [loading, setLoading] = useState(true);
+  const [lessonCount, setLessonCount] = useState<number | null>(null);
 
   useEffect(() => {
     if (!isLoaded || !userId) return;
 
-    fetch(`/api/creator?user_id=${userId}`)
+    fetch(`/api/creator?me=1`)
       .then((r) => r.json())
       .then((data) => {
         if (data.profile) setProfile(data.profile);
@@ -573,7 +603,12 @@ function PainelContent() {
       .then((r) => r.json())
       .then(setSales)
       .catch(() => {});
-  }, [isLoaded, userId]);
+
+    fetch("/api/creator/content")
+      .then((r) => (r.ok ? r.json() : { modules: [] }))
+      .then((d) => setLessonCount((d.modules ?? []).reduce((a: number, m: any) => a + m.lessons.length, 0)))
+      .catch(() => setLessonCount(0));
+  }, [isLoaded, userId, active]);
 
   if (!isLoaded || loading) {
     return (
@@ -610,7 +645,7 @@ function PainelContent() {
     <div className="min-h-screen bg-[#080808] text-foreground">
       <Sidebar active={active} setActive={setActive} slug={profile.slug} />
 
-      <main className="ml-60 p-8">
+      <main className="lg:ml-60 px-4 pt-28 pb-10 lg:p-8">
         {showBanner && (
           <motion.div
             initial={{ opacity: 0, y: -10 }}
@@ -631,7 +666,10 @@ function PainelContent() {
           </motion.div>
         )}
 
-        {active === "dashboard" && <DashboardTab profile={profile} sales={sales} />}
+        {active === "dashboard" && <DashboardTab profile={profile} sales={sales} lessonCount={lessonCount} setActive={setActive} />}
+        {active === "conteudo" && <ConteudoTab courseId={profile.creator_courses?.[0]?.id} />}
+        {active === "alunos" && <AlunosTab />}
+        {active === "cupons" && <CuponsTab slug={profile.slug} />}
         {active === "editor" && <EditorTab profile={profile} />}
         {active === "midias" && <MidiasTab />}
         {active === "config" && <ConfigTab profile={profile} />}

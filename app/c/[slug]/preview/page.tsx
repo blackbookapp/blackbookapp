@@ -1,36 +1,33 @@
 export const dynamic = "force-dynamic";
 
 import { notFound } from "next/navigation";
+import { auth } from "@clerk/nextjs/server";
 import CreatorLP from "../CreatorLP";
-import { createClient } from "@supabase/supabase-js";
+import { db } from "@/lib/creator-server";
+import { checkIsAdmin } from "@/lib/auth-server";
 
-async function getCreatorDataDraft(slug: string) {
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
+export default async function PreviewPage({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params;
+  const { userId } = await auth();
+  if (!userId) notFound();
 
-  const { data: profile, error } = await supabase
+  const { data: profile } = await db
     .from("creator_profiles")
     .select(`
-      *,
+      id, user_id, slug, name, bio, photo_url, specialty, instagram, theme_color,
       creator_courses (
-        *,
+        id, title, subtitle, main_promise, description, target_audience,
+        price, price_installments, price_installment_value, video_id, is_published,
         creator_modules ( title, order_index ),
         creator_testimonials ( name, role, text, stars, photo_url )
       )
     `)
     .eq("slug", slug)
-    .single();
+    .maybeSingle();
 
-  if (error || !profile) return null;
-  const course = profile.creator_courses?.[0] || null;
-  return { profile, course };
-}
+  if (!profile) notFound();
+  if (profile.user_id !== userId && !(await checkIsAdmin())) notFound();
 
-export default async function PreviewPage({ params }: { params: Promise<{ slug: string }> }) {
-  const { slug } = await params;
-  const data = await getCreatorDataDraft(slug);
-  if (!data) notFound();
-  return <CreatorLP profile={data.profile} course={data.course} isPreview />;
+  const { user_id: _omit, ...publicProfile } = profile as any;
+  return <CreatorLP profile={publicProfile} course={(profile as any).creator_courses?.[0] || null} isPreview />;
 }

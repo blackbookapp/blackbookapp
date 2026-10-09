@@ -177,11 +177,16 @@ export default function BlackbookPage() {
           ))}
         </div>
 
-        <Link href="/criar">
-          <Button className="metallic-gradient text-black font-bold text-[10px] tracking-widest uppercase px-5 h-9 rounded-full">
-            Criar Minha Página <ArrowRight className="w-3.5 h-3.5 ml-1.5" />
-          </Button>
-        </Link>
+        <div className="flex items-center gap-4">
+          <Link href="/entrar" className="text-[12px] font-semibold uppercase tracking-widest text-muted-foreground hover:text-foreground transition-colors">
+            Entrar
+          </Link>
+          <Link href="/criar" className="hidden sm:block">
+            <Button className="metallic-gradient text-black font-bold text-[10px] tracking-widest uppercase px-5 h-9 rounded-full">
+              Criar Minha Página <ArrowRight className="w-3.5 h-3.5 ml-1.5" />
+            </Button>
+          </Link>
+        </div>
       </motion.nav>
 
       {/* ─── HERO ─── */}

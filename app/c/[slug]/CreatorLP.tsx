@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion, useInView, useScroll, useTransform } from "motion/react";
 import { CheckCircle, ArrowRight, Star, ChevronDown, Shield, Instagram, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -25,11 +25,21 @@ interface CreatorCourse {
   price: number;
   price_installments: number;
   price_installment_value: number;
-  checkout_url: string;
   video_id: string;
   creator_modules: { title: string; order_index: number }[];
   creator_testimonials: { name: string; role: string; text: string; stars: number; photo_url?: string }[];
 }
+
+function priceToNumber(value: unknown): number {
+  if (value === null || value === undefined || value === "") return 0;
+  if (typeof value === "number") return value;
+  let s = String(value).replace(/[^\d.,]/g, "");
+  if (s.includes(",")) s = s.replace(/\./g, "").replace(",", ".");
+  const n = parseFloat(s);
+  return Number.isFinite(n) ? n : 0;
+}
+
+const brl = (n: number) => n.toLocaleString("pt-BR", { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 });
 
 // ─── Animation helper ─────────────────────────────────────────────────────────
 function FadeUp({ children, delay = 0, className = "" }: {
@@ -69,25 +79,76 @@ export default function CreatorLP({ profile, course, isPreview }: { profile: Cre
   const modules = course?.creator_modules?.sort((a, b) => a.order_index - b.order_index) || [];
   const testimonials = course?.creator_testimonials || [];
 
+  const [checkoutError, setCheckoutError] = useState("");
+  const [couponInput, setCouponInput] = useState("");
+  const [couponOpen, setCouponOpen] = useState(false);
+  const [coupon, setCoupon] = useState<{ code: string; percent_off: number; final_cents: number } | null>(null);
+  const [couponMsg, setCouponMsg] = useState("");
+
+  const applyCoupon = async (raw: string) => {
+    const code = raw.trim().toUpperCase();
+    if (!code) return;
+    setCouponMsg("");
+    try {
+      const res = await fetch(`/api/stripe/checkout?slug=${encodeURIComponent(profile.slug)}&coupon=${encodeURIComponent(code)}`);
+      const data = await res.json();
+      if (data.valid) {
+        setCoupon(data);
+        setCouponOpen(false);
+      } else {
+        setCoupon(null);
+        setCouponMsg("Cupom inválido ou expirado.");
+      }
+    } catch {
+      setCouponMsg("Não foi possível validar o cupom.");
+    }
+  };
+
+  useEffect(() => {
+    const fromUrl = new URLSearchParams(window.location.search).get("cupom");
+    if (fromUrl) applyCoupon(fromUrl);
+    if (isPreview) return;
+    try {
+      const key = `bb_view_${profile.slug}`;
+      if (sessionStorage.getItem(key)) return;
+      sessionStorage.setItem(key, "1");
+    } catch {}
+    fetch("/api/track", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ slug: profile.slug }),
+      keepalive: true,
+    }).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const handleCTA = async () => {
+    setCheckoutError("");
+    if (isPreview) {
+      setCheckoutError("Isto é uma prévia — o checkout fica ativo depois que a página for publicada.");
+      return;
+    }
     setCheckoutLoading(true);
     try {
-      // Tenta Stripe Connect primeiro; fallback para checkout_url direto
       const res = await fetch("/api/stripe/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ slug: profile.slug }),
+        body: JSON.stringify({ slug: profile.slug, coupon: coupon?.code }),
       });
       const data = await res.json();
       if (data.url) {
         window.location.href = data.url;
         return;
       }
-    } catch {}
-    // Fallback: abre URL de checkout configurada manualmente
-    if (course?.checkout_url) window.open(course.checkout_url, "_blank");
+      setCheckoutError(data.error || "Não foi possível abrir o pagamento. Tente novamente.");
+    } catch {
+      setCheckoutError("Erro de conexão. Tente novamente.");
+    }
     setCheckoutLoading(false);
   };
+
+  const basePrice = priceToNumber(course?.price);
+  const finalPrice = coupon ? coupon.final_cents / 100 : basePrice;
 
   return (
     <div className="min-h-screen bg-[#080808] text-white overflow-x-hidden" style={{ "--color-primary": accent, "--color-ring": accent, "--color-accent": accent } as React.CSSProperties}>
@@ -181,9 +242,10 @@ export default function CreatorLP({ profile, course, isPreview }: { profile: Cre
           {course?.price && (
             <div className="text-center">
               <p className="text-2xl font-black">
-                R$ {parseFloat(String(course.price)).toLocaleString("pt-BR", { minimumFractionDigits: 0 })}
+                {coupon && <span className="text-base text-white/40 line-through mr-2">R$ {brl(basePrice)}</span>}
+                R$ {brl(finalPrice)}
               </p>
-              {course.price_installments > 1 && (
+              {!coupon && course.price_installments > 1 && (
                 <p className="text-xs text-white/50">
                   ou {course.price_installments}x de R$ {Number(course.price_installment_value).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                 </p>
@@ -399,10 +461,18 @@ export default function CreatorLP({ profile, course, isPreview }: { profile: Cre
                   <p className="text-[11px] font-bold uppercase tracking-widest text-[#A3A3A3]/60 mb-1">
                     Acesso completo
                   </p>
+                  {coupon && (
+                    <p className="text-lg text-white/40 line-through">R$ {brl(basePrice)}</p>
+                  )}
                   <p className="text-5xl font-black">
-                    R$ {parseFloat(String(course.price)).toLocaleString("pt-BR", { minimumFractionDigits: 0 })}
+                    R$ {brl(finalPrice)}
                   </p>
-                  {course.price_installments > 1 && (
+                  {coupon && (
+                    <p className="text-xs font-bold text-green-400 mt-1">
+                      Cupom {coupon.code} aplicado · {coupon.percent_off}% OFF
+                    </p>
+                  )}
+                  {!coupon && course.price_installments > 1 && (
                     <p className="text-sm text-white/40 mt-1">
                       ou {course.price_installments}x de R$ {Number(course.price_installment_value).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                     </p>
@@ -415,6 +485,30 @@ export default function CreatorLP({ profile, course, isPreview }: { profile: Cre
                   className="metallic-gradient text-black font-bold h-14 px-12 rounded-2xl text-[12px] tracking-widest uppercase hover:scale-[1.03] transition-transform shadow-2xl">
                   {checkoutLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <>Garantir Minha Vaga <ArrowRight className="w-5 h-5 ml-2" /></>}
                 </Button>
+                {checkoutError && (
+                  <p className="text-sm text-red-400 max-w-sm">{checkoutError}</p>
+                )}
+                {!coupon && (couponOpen ? (
+                  <form
+                    onSubmit={(e) => { e.preventDefault(); applyCoupon(couponInput); }}
+                    className="flex gap-2"
+                  >
+                    <input
+                      value={couponInput}
+                      onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
+                      placeholder="CÓDIGO"
+                      className="bg-white/5 border border-white/15 rounded-xl px-4 py-2 text-sm uppercase tracking-widest w-40 focus:outline-none focus:border-white/30"
+                    />
+                    <button type="submit" className="px-4 py-2 rounded-xl border border-white/20 text-xs font-bold uppercase tracking-widest hover:bg-white/5">
+                      Aplicar
+                    </button>
+                  </form>
+                ) : (
+                  <button onClick={() => setCouponOpen(true)} className="text-xs text-white/40 hover:text-white/70 underline">
+                    Tenho um cupom
+                  </button>
+                ))}
+                {couponMsg && <p className="text-xs text-red-400">{couponMsg}</p>}
                 <p className="text-xs text-white/30 flex items-center gap-2">
                   <Shield className="w-3.5 h-3.5" />
                   Pagamento seguro · Acesso imediato após confirmação

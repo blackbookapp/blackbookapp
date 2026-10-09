@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
+import { auth } from "@clerk/nextjs/server";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: "2026-07-29.dahlia" as any });
 const supabase = createClient(
@@ -13,7 +14,8 @@ export async function GET(req: NextRequest) {
   const code = searchParams.get("code");
   const userId = searchParams.get("state");
 
-  if (!code || !userId) {
+  const { userId: signedInUser } = await auth();
+  if (!code || !userId || signedInUser !== userId) {
     return NextResponse.redirect(`${process.env.NEXT_PUBLIC_APP_URL}/painel?error=connect_failed`);
   }
 

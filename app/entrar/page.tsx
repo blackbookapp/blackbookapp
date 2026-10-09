@@ -5,7 +5,7 @@ import { useAuth } from "@clerk/nextjs";
 import { useEffect, Suspense } from "react";
 
 function safeRedirect(url: string | null) {
-  return url && url.startsWith("/") && !url.startsWith("//") ? url : "/painel";
+  return url && url.startsWith("/") && !url.startsWith("//") ? url : "/inicio";
 }
 
 function EntrarContent() {

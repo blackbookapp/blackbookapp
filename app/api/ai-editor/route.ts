@@ -1,11 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { auth } from "@clerk/nextjs/server";
+import { syncModules, priceToCents } from "@/lib/creator-server";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
+
+const PROFILE_FIELDS = ["name", "bio", "photo_url", "specialty", "instagram"];
+const COURSE_FIELDS = ["title", "subtitle", "main_promise", "description", "target_audience", "price"];
+
+function pick(input: Record<string, any>, allowed: string[]) {
+  const out: Record<string, any> = {};
+  for (const k of allowed) if (typeof input?.[k] === "string") out[k] = input[k];
+  return out;
+}
 
 const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
 const MODEL = "llama-3.3-70b-versatile";
@@ -32,7 +42,7 @@ const TOOLS = [
     type: "function",
     function: {
       name: "update_course",
-      description: "Atualiza título, subtítulo, promessa, descrição, público-alvo, preço ou URL do checkout do curso",
+      description: "Atualiza título, subtítulo, promessa, descrição, público-alvo ou preço do curso",
       parameters: {
         type: "object",
         properties: {
@@ -42,8 +52,6 @@ const TOOLS = [
           description: { type: "string" },
           target_audience: { type: "string" },
           price: { type: "string" },
-          checkout_url: { type: "string" },
-          video_id: { type: "string" },
         },
       },
     },
@@ -150,7 +158,6 @@ Curso atual:
 - Descrição: ${course?.description}
 - Público-alvo: ${course?.target_audience}
 - Preço: ${course?.price}
-- URL Checkout: ${course?.checkout_url}
 - Módulos: ${course?.creator_modules?.map((m: any) => m.title).join(", ") || "nenhum"}
 - Depoimentos: ${course?.creator_testimonials?.map((t: any) => `${t.name} (${t.stars}★)`).join(", ") || "nenhum"}
   `;
@@ -193,21 +200,27 @@ Curso atual:
     const input = JSON.parse(tc.function?.arguments ?? "{}");
 
     if (name === "update_profile") {
-      await supabase.from("creator_profiles").update(input).eq("user_id", userId);
-      actions.push("perfil atualizado");
+      const fields = pick(input, PROFILE_FIELDS);
+      if (Object.keys(fields).length) {
+        await supabase.from("creator_profiles").update(fields).eq("user_id", userId);
+        actions.push("perfil atualizado");
+      }
     }
 
     if (name === "update_course" && course) {
-      await supabase.from("creator_courses").update(input).eq("id", course.id);
-      actions.push("curso atualizado");
+      const fields = pick(input, COURSE_FIELDS);
+      if (fields.price !== undefined) {
+        const cents = priceToCents(fields.price);
+        fields.price = cents > 0 ? cents / 100 : course.price;
+      }
+      if (Object.keys(fields).length) {
+        await supabase.from("creator_courses").update(fields).eq("id", course.id);
+        actions.push("curso atualizado");
+      }
     }
 
-    if (name === "set_modules" && course) {
-      await supabase.from("creator_modules").delete().eq("course_id", course.id);
-      const modules = (input.modules as string[]).map((title: string, i: number) => ({
-        course_id: course.id, title, order_index: i,
-      }));
-      await supabase.from("creator_modules").insert(modules);
+    if (name === "set_modules" && course && Array.isArray(input.modules)) {
+      await syncModules(course.id, input.modules.map(String));
       actions.push("módulos redefinidos");
     }
 

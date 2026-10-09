@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { auth } from "@clerk/nextjs/server";
+import { syncModules, priceToCents } from "@/lib/creator-server";
 
 function getSupabase() {
   return createClient(
@@ -14,35 +15,51 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const {
-      name, bio, photo_url, specialty, instagram, slug, theme_color,
+      name, bio, photo_url, specialty, instagram, theme_color,
       course_title, course_subtitle, main_promise, description, target_audience,
       modules, testimonials,
       price, price_installments, price_installment_value, video_id,
-      is_published,
     } = body;
+    const slug = String(body.slug || "").toLowerCase().trim();
+
+    const { userId } = await auth();
+    if (!userId) return NextResponse.json({ error: "Faça login para continuar." }, { status: 401 });
 
     if (!slug || !name || !course_title) {
       return NextResponse.json({ error: "Campos obrigatórios: slug, name, course_title" }, { status: 400 });
     }
+    if (!/^[a-z0-9-]{3,40}$/.test(slug)) {
+      return NextResponse.json({ error: "O link deve ter de 3 a 40 caracteres: letras minúsculas, números e hífen." }, { status: 400 });
+    }
 
     const supabase = getSupabase();
 
-    const { userId } = await auth();
+    // 1. Perfil: um por usuário; o slug não pode pertencer a outra pessoa
+    const { data: slugOwner } = await supabase
+      .from("creator_profiles").select("id, user_id").eq("slug", slug).maybeSingle();
+    if (slugOwner && slugOwner.user_id && slugOwner.user_id !== userId) {
+      return NextResponse.json({ error: "Esse link já está em uso. Escolha outro." }, { status: 409 });
+    }
+    const { data: mine } = await supabase
+      .from("creator_profiles").select("id").eq("user_id", userId).maybeSingle();
 
-    // 1. Upsert creator profile
-    const { data: profile, error: profileErr } = await supabase
-      .from("creator_profiles")
-      .upsert({
-        slug, name, bio, photo_url, specialty, instagram,
-        ...(theme_color ? { theme_color } : {}),
-        ...(userId ? { user_id: userId } : {}),
-      }, { onConflict: "slug" })
-      .select()
-      .single();
+    const profileFields = {
+      slug, name, bio, photo_url, specialty, instagram,
+      ...(theme_color ? { theme_color } : {}),
+      user_id: userId,
+    };
+    const existingId = mine?.id || slugOwner?.id;
+    const { data: profile, error: profileErr } = existingId
+      ? await supabase.from("creator_profiles").update(profileFields).eq("id", existingId).select().single()
+      : await supabase.from("creator_profiles").insert(profileFields).select().single();
 
     if (profileErr) throw new Error(`Perfil: ${profileErr.message}`);
 
-    // 2. Upsert course
+    // 2. Curso (publicação só acontece pelo webhook após o pagamento da ativação)
+    const toNumber = (v: unknown) => {
+      const cents = priceToCents(v);
+      return cents > 0 ? cents / 100 : null;
+    };
     const { data: course, error: courseErr } = await supabase
       .from("creator_courses")
       .upsert({
@@ -52,26 +69,18 @@ export async function POST(req: NextRequest) {
         main_promise,
         description,
         target_audience,
-        price: price ? parseFloat(price) : null,
+        price: toNumber(price),
         price_installments: price_installments ? parseInt(price_installments) : null,
-        price_installment_value: price_installment_value ? parseFloat(price_installment_value.replace(",", ".")) : null,
+        price_installment_value: toNumber(price_installment_value),
         video_id,
-        is_published: is_published !== undefined ? is_published : true,
       }, { onConflict: "creator_id" })
       .select()
       .single();
 
     if (courseErr) throw new Error(`Curso: ${courseErr.message}`);
 
-    // 3. Replace modules
-    await supabase.from("creator_modules").delete().eq("course_id", course.id);
-    const cleanModules = (modules as string[])
-      .filter((m: string) => m.trim())
-      .map((title: string, order_index: number) => ({ course_id: course.id, title, order_index }));
-    if (cleanModules.length > 0) {
-      const { error: modErr } = await supabase.from("creator_modules").insert(cleanModules);
-      if (modErr) throw new Error(`Módulos: ${modErr.message}`);
-    }
+    // 3. Módulos: atualiza no lugar para não apagar as aulas
+    await syncModules(course.id, Array.isArray(modules) ? modules : []);
 
     // 4. Replace testimonials
     await supabase.from("creator_testimonials").delete().eq("course_id", course.id);
@@ -114,31 +123,33 @@ export async function PATCH(req: NextRequest) {
   }
 }
 
-// GET /api/creator?slug=xxx ou ?user_id=xxx
+// GET /api/creator?me=1 (perfil do usuário logado) ou ?slug=xxx (dados públicos)
 export async function GET(req: NextRequest) {
   const slug = req.nextUrl.searchParams.get("slug");
-  const userId = req.nextUrl.searchParams.get("user_id");
+  const wantsMe = req.nextUrl.searchParams.has("me") || req.nextUrl.searchParams.has("user_id");
 
   const supabase = getSupabase();
 
-  if (userId) {
-    const { data, error } = await supabase
+  if (wantsMe) {
+    const { userId } = await auth();
+    if (!userId) return NextResponse.json({ profile: null }, { status: 401 });
+    const { data } = await supabase
       .from("creator_profiles")
       .select(`*, creator_courses(*, creator_modules(*), creator_testimonials(*))`)
       .eq("user_id", userId)
-      .single();
-    if (error || !data) return NextResponse.json({ profile: null });
-    return NextResponse.json({ profile: data });
+      .maybeSingle();
+    return NextResponse.json({ profile: data ?? null });
   }
 
-  if (!slug) return NextResponse.json({ error: "slug ou user_id obrigatório" }, { status: 400 });
+  if (!slug) return NextResponse.json({ error: "slug obrigatório" }, { status: 400 });
 
-  const { data, error } = await supabase
+  const { data } = await supabase
     .from("creator_profiles")
-    .select(`*, creator_courses(*, creator_modules(*), creator_testimonials(*))`)
+    .select(`slug, name, bio, photo_url, specialty, instagram, theme_color,
+      creator_courses(title, subtitle, main_promise, price, is_published, creator_modules(title, order_index))`)
     .eq("slug", slug)
-    .single();
+    .maybeSingle();
 
-  if (error || !data) return NextResponse.json({ error: "Criador não encontrado" }, { status: 404 });
+  if (!data) return NextResponse.json({ error: "Criador não encontrado" }, { status: 404 });
   return NextResponse.json(data);
 }

@@ -8,9 +8,11 @@ import { Progress } from "@/components/ui/progress";
 
 interface VideoUploaderProps {
   onSuccess: (videoId: string) => void;
+  endpoint?: string;
 }
 
-export function VideoUploader({ onSuccess }: VideoUploaderProps) {
+export function VideoUploader({ onSuccess, endpoint = "/api/upload-video" }: VideoUploaderProps) {
+  const mediaIdRef = useRef<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [progress, setProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
@@ -34,12 +36,18 @@ export function VideoUploader({ onSuccess }: VideoUploaderProps) {
     setIsUploading(true);
     setError(null);
 
+    mediaIdRef.current = null;
     const upload = new tus.Upload(file, {
-      endpoint: "/api/upload-video",
+      endpoint,
+      chunkSize: 50 * 1024 * 1024,
       retryDelays: [0, 3000, 5000, 10000, 20000],
       metadata: {
-        filename: file.name,
+        name: file.name,
         filetype: file.type,
+      },
+      onAfterResponse: (_req, res) => {
+        const id = res.getHeader("stream-media-id");
+        if (id) mediaIdRef.current = id;
       },
       onError: (err) => {
         setIsUploading(false);
@@ -54,8 +62,8 @@ export function VideoUploader({ onSuccess }: VideoUploaderProps) {
         setSuccess(true);
         // A URL do Cloudflare Stream gerada via TUS tem o ID do vídeo no final
         // Ex: https://api.cloudflare.com/.../stream/1234abcd5678
-        const urlSegments = upload.url?.split("/") || [];
-        const videoId = urlSegments[urlSegments.length - 1];
+        const urlSegments = (upload.url || "").split("?")[0].split("/");
+        const videoId = mediaIdRef.current || urlSegments[urlSegments.length - 1];
         if (videoId) {
           onSuccess(videoId);
         } else {
@@ -153,7 +161,7 @@ export function VideoUploader({ onSuccess }: VideoUploaderProps) {
           </div>
           <h3 className="text-lg font-bold text-white mb-2">Upload Concluído!</h3>
           <p className="text-sm text-muted-foreground">
-            O vídeo foi processado pelo Cloudflare Stream com sucesso.
+            O vídeo foi enviado. Ele pode levar alguns minutos para ficar disponível.
           </p>
         </div>
       )}

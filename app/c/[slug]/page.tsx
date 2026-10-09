@@ -1,32 +1,31 @@
 import { notFound } from "next/navigation";
 import CreatorLP from "./CreatorLP";
-import { createClient } from "@supabase/supabase-js";
+import { db } from "@/lib/creator-server";
 
-// ─── Fetch creator + course data ──────────────────────────────────────────────
+export const dynamic = "force-dynamic";
+
+const PUBLIC_PROFILE = "id, slug, name, bio, photo_url, specialty, instagram, theme_color";
+
 async function getCreatorData(slug: string) {
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
-
-  const { data: profile, error } = await supabase
+  const { data: profile } = await db
     .from("creator_profiles")
     .select(`
-      *,
+      ${PUBLIC_PROFILE},
       creator_courses (
-        *,
+        id, title, subtitle, main_promise, description, target_audience,
+        price, price_installments, price_installment_value, video_id, is_published,
         creator_modules ( title, order_index ),
         creator_testimonials ( name, role, text, stars, photo_url )
       )
     `)
     .eq("slug", slug)
     .eq("creator_courses.is_published", true)
-    .single();
+    .maybeSingle();
 
-  if (error || !profile) return null;
-
-  const course = profile.creator_courses?.[0] || null;
-  return { profile, course };
+  if (!profile) return null;
+  const course = (profile as any).creator_courses?.[0] || null;
+  if (!course) return null;
+  return { profile: profile as any, course };
 }
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
@@ -37,6 +36,11 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   return {
     title: course?.title || `Curso de ${profile.name}`,
     description: course?.main_promise || profile.bio,
+    openGraph: {
+      title: course?.title,
+      description: course?.main_promise || profile.bio,
+      images: profile.photo_url ? [profile.photo_url] : undefined,
+    },
   };
 }
 
