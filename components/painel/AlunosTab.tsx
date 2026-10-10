@@ -43,7 +43,7 @@ export function AlunosTab() {
         new Date(s.created_at).toLocaleDateString("pt-BR"),
         ((s.amount_paid ?? 0) / 100).toFixed(2).replace(".", ","),
         s.coupon_code || "",
-        s.status === "active" ? "Ativo" : "Estornado",
+        s.status === "active" ? "Ativo" : s.status === "refunded" ? "Estornado" : "Revogado",
         `${s.progress}%`,
       ]);
     }
@@ -125,7 +125,7 @@ export function AlunosTab() {
                   </td>
                   <td className="p-4">
                     <span className={s.status === "active" ? "text-green-400 text-xs font-bold" : "text-red-400 text-xs font-bold"}>
-                      {s.status === "active" ? "Ativo" : "Estornado"}
+                      {s.status === "active" ? "Ativo" : s.status === "refunded" ? "Estornado" : "Revogado"}
                     </span>
                   </td>
                 </tr>

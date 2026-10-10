@@ -67,7 +67,7 @@ interface Sale {
 }
 
 // ─── Sidebar ─────────────────────────────────────────────────
-function Sidebar({ active, setActive, slug }: { active: string; setActive: (v: string) => void; slug: string }) {
+function Sidebar({ active, setActive, slug, isAdmin }: { active: string; setActive: (v: string) => void; slug: string; isAdmin: boolean }) {
   const { signOut } = useClerk();
 
   return (
@@ -118,6 +118,12 @@ function Sidebar({ active, setActive, slug }: { active: string; setActive: (v: s
 
       {/* Ver LP */}
       <div className="px-3 pb-4 space-y-2">
+        {isAdmin && (
+          <Link href="/admin"
+            className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-[11px] font-bold tracking-widest uppercase bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 hover:bg-yellow-500/15">
+            Admin <Settings className="w-3.5 h-3.5" />
+          </Link>
+        )}
         {slug && (
           <Link href={`/c/${slug}`} target="_blank">
             <Button variant="outline" size="sm"
@@ -600,6 +606,7 @@ function PainelContent() {
   const [active, setActive] = useState("dashboard");
   const [loading, setLoading] = useState(true);
   const [lessonCount, setLessonCount] = useState<number | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     if (!isLoaded || !userId) return;
@@ -617,6 +624,7 @@ function PainelContent() {
       .then((r) => r.json())
       .then((data) => {
         if (data.profile) setProfile(data.profile);
+        setIsAdmin(!!data.isAdmin);
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -665,7 +673,7 @@ function PainelContent() {
 
   return (
     <div className="min-h-screen bg-[#080808] text-foreground">
-      <Sidebar active={active} setActive={setActive} slug={profile.slug} />
+      <Sidebar active={active} setActive={setActive} slug={profile.slug} isAdmin={isAdmin} />
 
       <main className="lg:ml-60 px-4 pt-28 pb-10 lg:p-8">
         {showBanner && (

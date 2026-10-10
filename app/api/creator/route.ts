@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { auth } from "@clerk/nextjs/server";
 import { syncModules, priceToCents } from "@/lib/creator-server";
 import { THEME_FIELDS, isValidThemeValue } from "@/lib/theme";
+import { checkIsAdmin } from "@/lib/auth-server";
 
 function getSupabase() {
   return createClient(
@@ -150,7 +151,7 @@ export async function GET(req: NextRequest) {
       .select(`*, creator_courses(*, creator_modules(*), creator_testimonials(*))`)
       .eq("user_id", userId)
       .maybeSingle();
-    return NextResponse.json({ profile: data ?? null });
+    return NextResponse.json({ profile: data ?? null, isAdmin: await checkIsAdmin() });
   }
 
   if (!slug) return NextResponse.json({ error: "slug obrigatório" }, { status: 400 });
