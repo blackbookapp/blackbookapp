@@ -49,7 +49,7 @@ export function buildTools(fontKeys: string[]) {
       orientation: { type: "string", enum: ["landscape", "portrait", "squarish"] },
     }, ["query"]),
     fn("generate_image", "Gera imagem quadrada com IA (fundos, texturas). Retorna url.", {
-      prompt: { type: "string", description: "em inglês, detalhado, sem texto na imagem" },
+      prompt: { type: "string", description: "em inglês, detalhado, terminando com 'no people, no text'" },
     }, ["prompt"]),
   ];
 }
