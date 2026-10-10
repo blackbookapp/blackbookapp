@@ -20,6 +20,8 @@ import { ConteudoTab } from "@/components/painel/ConteudoTab";
 import { AlunosTab } from "@/components/painel/AlunosTab";
 import { CuponsTab } from "@/components/painel/CuponsTab";
 import { StatsPanel } from "@/components/painel/StatsPanel";
+import { ThemeEditor } from "@/components/ThemeEditor";
+import { normalizeTheme } from "@/lib/theme";
 
 const PUBLIC_HOST = (process.env.NEXT_PUBLIC_APP_URL || "https://blackbookapp.com.br").replace(/^https?:\/\//, "").replace(/\/$/, "");
 
@@ -43,6 +45,8 @@ interface CreatorProfile {
   specialty: string;
   stripe_account_id: string | null;
   stripe_onboarding_done: boolean;
+  theme_color?: string | null;
+  theme?: Record<string, string> | null;
   creator_courses: Array<{
     id: string;
     title: string;
@@ -276,6 +280,7 @@ function EditorTab({ profile }: { profile: CreatorProfile }) {
   const [loading, setLoading] = useState(false);
   const [lpKey, setLpKey] = useState(0);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const previewRef = useRef<HTMLIFrameElement>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -294,7 +299,11 @@ function EditorTab({ profile }: { profile: CreatorProfile }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: userMsg }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setMessages((prev) => [...prev, { role: "ai", text: `Erro: ${data.error || "tente novamente."}` }]);
+        return;
+      }
       setMessages((prev) => [...prev, { role: "ai", text: data.reply, actions: data.actions }]);
       if (data.refreshLP) setLpKey((k) => k + 1);
     } catch {
@@ -388,10 +397,14 @@ function EditorTab({ profile }: { profile: CreatorProfile }) {
             <RefreshCw className="w-3.5 h-3.5" />
           </button>
         </div>
+        <div className="p-4 border-b border-white/8">
+          <ThemeEditor initial={normalizeTheme(profile.theme, profile.theme_color)} previewFrame={previewRef} />
+        </div>
         <iframe
+          ref={previewRef}
           key={lpKey}
-          src={`/c/${profile.slug}`}
-          className="flex-1 w-full border-none"
+          src={`/c/${profile.slug}/preview`}
+          className="flex-1 min-h-[420px] w-full border-none"
           title="Preview da LP"
         />
       </div>

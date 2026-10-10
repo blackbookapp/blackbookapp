@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 import { auth } from "@clerk/nextjs/server";
+import { checkIsAdmin } from "@/lib/auth-server";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: "2026-07-29.dahlia" });
 
@@ -32,7 +33,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Página não encontrada." }, { status: 404 });
     }
 
-    if (profile.platform_paid) {
+    if (profile.platform_paid || (await checkIsAdmin())) {
       // Already paid — just publish the LP and redirect to painel
       await supabase.from("creator_profiles").update({ platform_paid: true }).eq("id", profile.id);
       await supabase.from("creator_courses").update({ is_published: true }).eq("creator_id", profile.id);

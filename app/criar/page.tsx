@@ -10,6 +10,8 @@ import {
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { ThemeEditor } from "@/components/ThemeEditor";
+import { normalizeTheme, type LPTheme } from "@/lib/theme";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 interface WizardData {
@@ -41,6 +43,7 @@ interface WizardData {
   video_id: string;
   // Step 6 — Identidade
   theme_color: string;
+  theme?: LPTheme;
 }
 
 const INITIAL: WizardData = {
@@ -413,22 +416,13 @@ function Step5({ d, set }: { d: WizardData; set: (k: keyof WizardData, v: any) =
   );
 }
 
-const THEME_COLORS = [
-  { name: "Prata",    value: "#A3A3A3" },
-  { name: "Roxo",     value: "#a855f7" },
-  { name: "Ciano",    value: "#06b6d4" },
-  { name: "Dourado",  value: "#eab308" },
-  { name: "Verde",    value: "#22c55e" },
-  { name: "Laranja",  value: "#f97316" },
-  { name: "Azul",     value: "#3b82f6" },
-  { name: "Rosa",     value: "#ec4899" },
-];
-
 function Step6Preview({ d, set }: { d: WizardData; set: (k: keyof WizardData, v: any) => void }) {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [iframeKey, setIframeKey] = useState(0);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const [initialTheme] = useState<LPTheme>(() => d.theme ?? normalizeTheme(null, d.theme_color));
   const [aiMessages, setAiMessages] = useState<{ role: "user" | "ai"; text: string }[]>([
     { role: "ai", text: "Sua LP está pronta para visualização! Me diga o que quer ajustar — título, bio, módulos, depoimentos, preço — e eu edito na hora." }
   ]);
@@ -462,16 +456,6 @@ function Step6Preview({ d, set }: { d: WizardData; set: (k: keyof WizardData, v:
 
   // Auto-save when entering step
   useEffect(() => { saveDraft(); }, []);
-
-  const pickColor = async (color: string) => {
-    set("theme_color", color);
-    await fetch("/api/creator", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ theme_color: color }),
-    });
-    setIframeKey(k => k + 1);
-  };
 
   const sendAI = async () => {
     if (!aiInput.trim() || aiLoading) return;
@@ -513,18 +497,13 @@ function Step6Preview({ d, set }: { d: WizardData; set: (k: keyof WizardData, v:
          "Preparando..."}
       </div>
 
-      {/* Color picker */}
-      <div>
-        <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground mb-2">Cor de destaque da sua LP</p>
-        <div className="flex flex-wrap gap-2">
-          {THEME_COLORS.map((c) => (
-            <button key={c.value} type="button" onClick={() => pickColor(c.value)}
-              title={c.name}
-              className={`w-8 h-8 rounded-full border-2 transition-all ${d.theme_color === c.value ? "scale-125 border-white" : "border-transparent hover:scale-110"}`}
-              style={{ backgroundColor: c.value }} />
-          ))}
-        </div>
-      </div>
+      {saved && (
+        <ThemeEditor
+          initial={initialTheme}
+          previewFrame={iframeRef}
+          onChange={(t) => { set("theme", t); set("theme_color", t.accent); }}
+        />
+      )}
 
       {/* Split: preview + AI chat */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4" style={{ height: 480 }}>
@@ -540,7 +519,7 @@ function Step6Preview({ d, set }: { d: WizardData; set: (k: keyof WizardData, v:
             )}
           </div>
           {saved ? (
-            <iframe key={iframeKey} src={`/c/${d.slug}/preview`} className="flex-1 w-full border-none" title="Preview" />
+            <iframe ref={iframeRef} key={iframeKey} src={`/c/${d.slug}/preview`} className="flex-1 w-full border-none" title="Preview" />
           ) : (
             <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
               <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />

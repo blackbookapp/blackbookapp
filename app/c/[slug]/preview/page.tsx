@@ -11,19 +11,23 @@ export default async function PreviewPage({ params }: { params: Promise<{ slug: 
   const { userId } = await auth();
   if (!userId) notFound();
 
-  const { data: profile } = await db
-    .from("creator_profiles")
-    .select(`
-      id, user_id, slug, name, bio, photo_url, specialty, instagram, theme_color,
-      creator_courses (
-        id, title, subtitle, main_promise, description, target_audience,
-        price, price_installments, price_installment_value, video_id, is_published,
-        creator_modules ( title, order_index ),
-        creator_testimonials ( name, role, text, stars, photo_url )
-      )
-    `)
-    .eq("slug", slug)
-    .maybeSingle();
+  const query = (fields: string) =>
+    db
+      .from("creator_profiles")
+      .select(`
+        ${fields},
+        creator_courses (
+          id, title, subtitle, main_promise, description, target_audience,
+          price, price_installments, price_installment_value, video_id, is_published,
+          creator_modules ( title, order_index ),
+          creator_testimonials ( name, role, text, stars, photo_url )
+        )
+      `)
+      .eq("slug", slug)
+      .maybeSingle();
+  const base = "id, user_id, slug, name, bio, photo_url, specialty, instagram, theme_color";
+  const first = await query(`${base}, theme`);
+  const profile = (first.error ? (await query(base)).data : first.data) as any;
 
   if (!profile) notFound();
   if (profile.user_id !== userId && !(await checkIsAdmin())) notFound();

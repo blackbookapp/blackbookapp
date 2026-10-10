@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { auth } from "@clerk/nextjs/server";
 import { syncModules, priceToCents } from "@/lib/creator-server";
+import { normalizeTheme, isValidThemeValue, THEME_FIELDS, type LPTheme } from "@/lib/theme";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -18,9 +19,27 @@ function pick(input: Record<string, any>, allowed: string[]) {
 }
 
 const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
-const MODEL = "llama-3.3-70b-versatile";
+const MODEL = process.env.GROQ_MODEL || "openai/gpt-oss-120b";
 
 const TOOLS = [
+  {
+    type: "function",
+    function: {
+      name: "update_theme",
+      description:
+        "Muda as cores da página. Use cores hexadecimais #RRGGBB. background=fundo, text=textos, accent=destaques (títulos pequenos, ícones, linhas), button=fundo dos botões (ou 'metallic'), buttonText=texto dos botões. Envie só as que mudam.",
+      parameters: {
+        type: "object",
+        properties: {
+          background: { type: "string" },
+          text: { type: "string" },
+          accent: { type: "string" },
+          button: { type: "string" },
+          buttonText: { type: "string" },
+        },
+      },
+    },
+  },
   {
     type: "function",
     function: {
@@ -160,6 +179,8 @@ Curso atual:
 - Preço: ${course?.price}
 - Módulos: ${course?.creator_modules?.map((m: any) => m.title).join(", ") || "nenhum"}
 - Depoimentos: ${course?.creator_testimonials?.map((t: any) => `${t.name} (${t.stars}★)`).join(", ") || "nenhum"}
+
+Cores atuais da página: ${JSON.stringify(normalizeTheme(profile.theme, profile.theme_color))}
   `;
 
   const groqRes = await fetch(GROQ_API_URL, {
@@ -179,14 +200,16 @@ Curso atual:
       ],
       tools: TOOLS,
       tool_choice: "auto",
-      max_tokens: 1024,
+      max_tokens: 2048,
+      ...(MODEL.startsWith("openai/gpt-oss") ? { reasoning_effort: "low" } : {}),
     }),
   });
 
   if (!groqRes.ok) {
     const err = await groqRes.text();
-    console.error("[ai-editor groq]", err);
-    return NextResponse.json({ error: "Erro ao chamar IA" }, { status: 500 });
+    console.error("[ai-editor groq]", groqRes.status, err);
+    const detail = groqRes.status === 429 ? "limite de uso da IA atingido, tente em alguns minutos" : `código ${groqRes.status}`;
+    return NextResponse.json({ error: `A IA não respondeu (${detail}).` }, { status: 502 });
   }
 
   const groqData = await groqRes.json();
@@ -197,7 +220,31 @@ Curso atual:
 
   for (const tc of toolCalls) {
     const name = tc.function?.name;
-    const input = JSON.parse(tc.function?.arguments ?? "{}");
+    let input: any = {};
+    try {
+      input = JSON.parse(tc.function?.arguments || "{}");
+    } catch {
+      continue;
+    }
+
+    if (name === "update_theme") {
+      const current = normalizeTheme(profile.theme, profile.theme_color);
+      const next: LPTheme = { ...current };
+      for (const { key } of THEME_FIELDS) {
+        const v = typeof input?.[key] === "string" ? input[key].trim() : undefined;
+        if (v && isValidThemeValue(key, v.length === 4 ? `#${[...v.slice(1)].map((c) => c + c).join("")}` : v)) {
+          next[key] = v.length === 4 ? `#${[...v.slice(1)].map((c) => c + c).join("")}` : v;
+        }
+      }
+      const { error } = await supabase
+        .from("creator_profiles")
+        .update({ theme: next, theme_color: next.accent })
+        .eq("user_id", userId);
+      if (!error) {
+        profile.theme = next;
+        actions.push("cores atualizadas");
+      }
+    }
 
     if (name === "update_profile") {
       const fields = pick(input, PROFILE_FIELDS);

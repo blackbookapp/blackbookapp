@@ -1,4 +1,5 @@
 import { db, getUserEmails, getEnrolledCourseIds } from "@/lib/creator-server";
+import { checkIsAdmin } from "@/lib/auth-server";
 
 /** Returns the user if they can watch the course (enrolled, or it's their own course). */
 export async function canAccessCourse(courseId: string) {
@@ -13,7 +14,7 @@ export async function canAccessCourse(courseId: string) {
   if (!course) return null;
 
   const isOwner = (course as any).creator_profiles?.user_id === me.userId;
-  if (isOwner) return { ...me, isOwner: true };
+  if (isOwner || (await checkIsAdmin())) return { ...me, isOwner: true };
 
   const enrolled = await getEnrolledCourseIds(me.userId, me.emails);
   if (!enrolled.includes(courseId)) return null;

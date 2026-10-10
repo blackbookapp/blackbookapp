@@ -1,11 +1,14 @@
 import { NextResponse } from "next/server";
 import { db, getUserEmails, getEnrolledCourseIds } from "@/lib/creator-server";
+import { checkIsAdmin } from "@/lib/auth-server";
 
 export async function GET() {
   const me = await getUserEmails();
   if (!me) return NextResponse.json({ courses: [] }, { status: 401 });
 
-  const courseIds = await getEnrolledCourseIds(me.userId, me.emails);
+  const courseIds = (await checkIsAdmin())
+    ? ((await db.from("creator_courses").select("id")).data ?? []).map((c) => c.id as string)
+    : await getEnrolledCourseIds(me.userId, me.emails);
   if (!courseIds.length) return NextResponse.json({ courses: [] });
 
   const { data: courses } = await db

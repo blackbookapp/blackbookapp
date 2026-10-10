@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { auth } from "@clerk/nextjs/server";
 import { syncModules, priceToCents } from "@/lib/creator-server";
+import { THEME_FIELDS, isValidThemeValue } from "@/lib/theme";
 
 function getSupabase() {
   return createClient(
@@ -105,17 +106,28 @@ export async function PATCH(req: NextRequest) {
     const { userId } = await auth();
     if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const { theme_color, slug } = await req.json();
-    if (!theme_color) return NextResponse.json({ error: "theme_color obrigatório" }, { status: 400 });
+    const body = await req.json();
+    const update: Record<string, unknown> = {};
 
-    const supabase = getSupabase();
+    if (body.theme && typeof body.theme === "object") {
+      const theme: Record<string, string> = {};
+      for (const { key } of THEME_FIELDS) {
+        if (isValidThemeValue(key, body.theme[key])) theme[key] = body.theme[key];
+      }
+      update.theme = theme;
+      if (theme.accent) update.theme_color = theme.accent;
+    } else if (isValidThemeValue("accent", body.theme_color)) {
+      update.theme_color = body.theme_color;
+    }
+    if (!Object.keys(update).length) return NextResponse.json({ error: "Nada para atualizar." }, { status: 400 });
 
-    const filter = userId
-      ? supabase.from("creator_profiles").update({ theme_color }).eq("user_id", userId)
-      : supabase.from("creator_profiles").update({ theme_color }).eq("slug", slug);
-
-    const { error } = await filter;
-    if (error) throw error;
+    const { error } = await getSupabase().from("creator_profiles").update(update).eq("user_id", userId);
+    if (error) {
+      if (/theme/.test(error.message)) {
+        return NextResponse.json({ error: "Falta rodar o supabase_schema_v4.sql no Supabase." }, { status: 500 });
+      }
+      throw error;
+    }
 
     return NextResponse.json({ ok: true });
   } catch (e: any) {

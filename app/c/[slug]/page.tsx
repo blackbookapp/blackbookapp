@@ -7,10 +7,21 @@ export const dynamic = "force-dynamic";
 const PUBLIC_PROFILE = "id, slug, name, bio, photo_url, specialty, instagram, theme_color";
 
 async function getCreatorData(slug: string) {
-  const { data: profile } = await db
+  const first = await queryCreator(slug, `${PUBLIC_PROFILE}, theme`);
+  // Coluna "theme" só existe após o schema v4.
+  const profile = first.error ? (await queryCreator(slug, PUBLIC_PROFILE)).data : first.data;
+
+  if (!profile) return null;
+  const course = (profile as any).creator_courses?.[0] || null;
+  if (!course) return null;
+  return { profile: profile as any, course };
+}
+
+function queryCreator(slug: string, profileFields: string) {
+  return db
     .from("creator_profiles")
     .select(`
-      ${PUBLIC_PROFILE},
+      ${profileFields},
       creator_courses (
         id, title, subtitle, main_promise, description, target_audience,
         price, price_installments, price_installment_value, video_id, is_published,
@@ -21,11 +32,6 @@ async function getCreatorData(slug: string) {
     .eq("slug", slug)
     .eq("creator_courses.is_published", true)
     .maybeSingle();
-
-  if (!profile) return null;
-  const course = (profile as any).creator_courses?.[0] || null;
-  if (!course) return null;
-  return { profile: profile as any, course };
 }
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
