@@ -4,7 +4,19 @@ export interface LPTheme {
   accent: string;
   button: string; // hex ou "metallic"
   buttonText: string;
+  headingFont?: string;
 }
+
+/** Fontes de título disponíveis (Google Fonts). O corpo do texto usa sempre Inter. */
+export const HEADING_FONTS: Record<string, { label: string; family: string; google?: string; uppercase: boolean; tracking?: string }> = {
+  inter: { label: "Moderna (Inter)", family: "var(--font-inter), Inter, sans-serif", uppercase: true },
+  bebas: { label: "Impacto (Bebas Neue)", family: "'Bebas Neue', sans-serif", google: "Bebas+Neue", uppercase: true, tracking: "0.02em" },
+  oswald: { label: "Condensada (Oswald)", family: "'Oswald', sans-serif", google: "Oswald:wght@500;700", uppercase: true, tracking: "0" },
+  archivo: { label: "Pesada (Archivo Black)", family: "'Archivo Black', sans-serif", google: "Archivo+Black", uppercase: true, tracking: "-0.02em" },
+  playfair: { label: "Elegante (Playfair)", family: "'Playfair Display', serif", google: "Playfair+Display:wght@600;800", uppercase: false, tracking: "-0.01em" },
+  pirata: { label: "Gótica (Pirata One)", family: "'Pirata One', serif", google: "Pirata+One", uppercase: false, tracking: "0.01em" },
+  space: { label: "Tech (Space Grotesk)", family: "'Space Grotesk', sans-serif", google: "Space+Grotesk:wght@500;700", uppercase: false, tracking: "-0.02em" },
+};
 
 export const DEFAULT_THEME: LPTheme = {
   background: "#080808",
@@ -25,7 +37,9 @@ export const THEME_PRESETS: { name: string; theme: LPTheme }[] = [
   { name: "Rosa", theme: { background: "#FFF1F5", text: "#2A0A16", accent: "#EC4899", button: "#EC4899", buttonText: "#FFFFFF" } },
 ];
 
-export const THEME_FIELDS: { key: keyof LPTheme; label: string }[] = [
+export type ColorKey = Exclude<keyof LPTheme, "headingFont">;
+
+export const THEME_FIELDS: { key: ColorKey; label: string }[] = [
   { key: "background", label: "Fundo" },
   { key: "text", label: "Textos" },
   { key: "accent", label: "Destaques" },
@@ -45,10 +59,13 @@ export function normalizeTheme(raw: unknown, legacyAccent?: string | null): LPTh
       if (typeof v !== "string") continue;
       if (HEX.test(v) || (key === "button" && v === "metallic")) t[key] = v;
     }
+    const f = (raw as any).headingFont;
+    if (typeof f === "string" && HEADING_FONTS[f]) t.headingFont = f;
   }
   return t;
 }
 
 export function isValidThemeValue(key: keyof LPTheme, v: unknown) {
+  if (key === "headingFont") return typeof v === "string" && !!HEADING_FONTS[v];
   return typeof v === "string" && (HEX.test(v) || (key === "button" && v === "metallic"));
 }

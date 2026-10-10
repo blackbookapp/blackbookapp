@@ -424,7 +424,7 @@ function Step6Preview({ d, set }: { d: WizardData; set: (k: keyof WizardData, v:
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [initialTheme] = useState<LPTheme>(() => d.theme ?? normalizeTheme(null, d.theme_color));
   const [aiMessages, setAiMessages] = useState<{ role: "user" | "ai"; text: string }[]>([
-    { role: "ai", text: "Sua LP está pronta para visualização! Me diga o que quer ajustar — título, bio, módulos, depoimentos, preço — e eu edito na hora." }
+    { role: "ai", text: "Sua página está no preview! Sou seu web designer: posso redesenhar tudo (\"deixa mais profissional, estilo blackwork\"), criar seções (bônus, garantia, perguntas frequentes, galeria), trocar cores e fontes, escrever textos e colocar fotos — as suas (suba na aba Mídias do painel), do banco de imagens ou geradas por IA." }
   ]);
   const [aiInput, setAiInput] = useState("");
   const [aiLoading, setAiLoading] = useState(false);

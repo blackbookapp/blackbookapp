@@ -115,6 +115,7 @@ export async function PATCH(req: NextRequest) {
       for (const { key } of THEME_FIELDS) {
         if (isValidThemeValue(key, body.theme[key])) theme[key] = body.theme[key];
       }
+      if (isValidThemeValue("headingFont", body.theme.headingFont)) theme.headingFont = body.theme.headingFont;
       update.theme = theme;
       if (theme.accent) update.theme_color = theme.accent;
     } else if (isValidThemeValue("accent", body.theme_color)) {

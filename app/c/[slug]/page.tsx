@@ -7,9 +7,11 @@ export const dynamic = "force-dynamic";
 const PUBLIC_PROFILE = "id, slug, name, bio, photo_url, specialty, instagram, theme_color";
 
 async function getCreatorData(slug: string) {
-  const first = await queryCreator(slug, `${PUBLIC_PROFILE}, theme`);
-  // Coluna "theme" só existe após o schema v4.
-  const profile = first.error ? (await queryCreator(slug, PUBLIC_PROFILE)).data : first.data;
+  // "theme" (v4) e "page" (v5) só existem depois dos SQLs; sem elas, usa o layout padrão.
+  let res: { data: any; error: any } = await queryCreator(slug, `${PUBLIC_PROFILE}, theme`, ", page");
+  if (res.error) res = await queryCreator(slug, `${PUBLIC_PROFILE}, theme`, "");
+  if (res.error) res = await queryCreator(slug, PUBLIC_PROFILE, "");
+  const profile = res.data;
 
   if (!profile) return null;
   const course = (profile as any).creator_courses?.[0] || null;
@@ -17,14 +19,14 @@ async function getCreatorData(slug: string) {
   return { profile: profile as any, course };
 }
 
-function queryCreator(slug: string, profileFields: string) {
+function queryCreator(slug: string, profileFields: string, extraCourseFields: string) {
   return db
     .from("creator_profiles")
     .select(`
       ${profileFields},
       creator_courses (
         id, title, subtitle, main_promise, description, target_audience,
-        price, price_installments, price_installment_value, video_id, is_published,
+        price, price_installments, price_installment_value, video_id, is_published${extraCourseFields},
         creator_modules ( title, order_index ),
         creator_testimonials ( name, role, text, stars, photo_url )
       )

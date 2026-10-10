@@ -1,328 +1,335 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 import { auth } from "@clerk/nextjs/server";
-import { syncModules, priceToCents } from "@/lib/creator-server";
-import { normalizeTheme, isValidThemeValue, THEME_FIELDS, type LPTheme } from "@/lib/theme";
+import { db, syncModules, priceToCents } from "@/lib/creator-server";
+import { normalizeTheme, isValidThemeValue, THEME_FIELDS, HEADING_FONTS, type LPTheme } from "@/lib/theme";
+import {
+  defaultPage, sanitizePage, sanitizeSection, schemaForPrompt, isAllowedImageUrl, newSectionId,
+  type PageDoc, type Section,
+} from "@/lib/page-schema";
+import { generateImage, searchStockPhoto, listCreatorPhotos } from "@/lib/ai-images";
+import { buildTools, buildDesignManual, IMAGE_TOOLS } from "@/lib/ai-designer";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+export const maxDuration = 60;
 
-const PROFILE_FIELDS = ["name", "bio", "photo_url", "specialty", "instagram"];
+const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
+const MODEL = process.env.GROQ_MODEL || "openai/gpt-oss-120b";
+const MAX_ROUNDS = 6;
+const MAX_IMAGE_CALLS = 4;
+
+const PROFILE_FIELDS = ["name", "bio", "specialty", "instagram"];
 const COURSE_FIELDS = ["title", "subtitle", "main_promise", "description", "target_audience", "price"];
 
 function pick(input: Record<string, any>, allowed: string[]) {
   const out: Record<string, any> = {};
-  for (const k of allowed) if (typeof input?.[k] === "string") out[k] = input[k];
+  for (const k of allowed) if (typeof input?.[k] === "string") out[k] = input[k].slice(0, 4000);
   return out;
 }
 
-const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
-const MODEL = process.env.GROQ_MODEL || "openai/gpt-oss-120b";
-
-const TOOLS = [
-  {
-    type: "function",
-    function: {
-      name: "update_theme",
-      description:
-        "Muda as cores da página. Use cores hexadecimais #RRGGBB. background=fundo, text=textos, accent=destaques (títulos pequenos, ícones, linhas), button=fundo dos botões (ou 'metallic'), buttonText=texto dos botões. Envie só as que mudam.",
-      parameters: {
-        type: "object",
-        properties: {
-          background: { type: "string" },
-          text: { type: "string" },
-          accent: { type: "string" },
-          button: { type: "string" },
-          buttonText: { type: "string" },
-        },
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "update_profile",
-      description: "Atualiza nome, bio, foto, especialidade ou instagram do criador",
-      parameters: {
-        type: "object",
-        properties: {
-          name: { type: "string" },
-          bio: { type: "string" },
-          photo_url: { type: "string" },
-          specialty: { type: "string" },
-          instagram: { type: "string" },
-        },
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "update_course",
-      description: "Atualiza título, subtítulo, promessa, descrição, público-alvo ou preço do curso",
-      parameters: {
-        type: "object",
-        properties: {
-          title: { type: "string" },
-          subtitle: { type: "string" },
-          main_promise: { type: "string" },
-          description: { type: "string" },
-          target_audience: { type: "string" },
-          price: { type: "string" },
-        },
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "set_modules",
-      description: "Define a lista completa de módulos do curso (substitui todos os atuais)",
-      parameters: {
-        type: "object",
-        required: ["modules"],
-        properties: {
-          modules: {
-            type: "array",
-            items: { type: "string" },
-            description: "Títulos dos módulos em ordem",
-          },
-        },
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "add_module",
-      description: "Adiciona um novo módulo ao curso",
-      parameters: {
-        type: "object",
-        required: ["title"],
-        properties: { title: { type: "string" } },
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "remove_module",
-      description: "Remove um módulo pelo título (ou parte do título)",
-      parameters: {
-        type: "object",
-        required: ["title"],
-        properties: { title: { type: "string" } },
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "add_testimonial",
-      description: "Adiciona um depoimento ao curso",
-      parameters: {
-        type: "object",
-        required: ["name", "text"],
-        properties: {
-          name: { type: "string" },
-          role: { type: "string" },
-          text: { type: "string" },
-          stars: { type: "number" },
-        },
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "remove_testimonial",
-      description: "Remove um depoimento pelo nome da pessoa",
-      parameters: {
-        type: "object",
-        required: ["name"],
-        properties: { name: { type: "string" } },
-      },
-    },
-  },
-];
+const TOOLS = buildTools(Object.keys(HEADING_FONTS));
+const DESIGN_MANUAL = buildDesignManual(schemaForPrompt(), MAX_IMAGE_CALLS);
 
 export async function POST(req: NextRequest) {
   const { userId } = await auth();
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!userId) return NextResponse.json({ error: "Faça login novamente." }, { status: 401 });
 
   const { message } = await req.json();
+  if (typeof message !== "string" || !message.trim()) return NextResponse.json({ error: "Mensagem vazia." }, { status: 400 });
 
-  const { data: profile } = await supabase
+  const { data: profile } = await db
     .from("creator_profiles")
     .select("*, creator_courses(*, creator_modules(*), creator_testimonials(*))")
     .eq("user_id", userId)
-    .single();
-
-  if (!profile) return NextResponse.json({ error: "Profile not found" }, { status: 404 });
+    .maybeSingle();
+  if (!profile) return NextResponse.json({ error: "Perfil não encontrado. Salve sua página primeiro." }, { status: 404 });
 
   const course = profile.creator_courses?.[0];
-  const context = `
-Perfil atual do criador:
-- Nome: ${profile.name}
-- Bio: ${profile.bio}
-- Especialidade: ${profile.specialty}
-- Instagram: ${profile.instagram}
-
-Curso atual:
-- Título: ${course?.title}
-- Subtítulo: ${course?.subtitle}
-- Promessa principal: ${course?.main_promise}
-- Descrição: ${course?.description}
-- Público-alvo: ${course?.target_audience}
-- Preço: ${course?.price}
-- Módulos: ${course?.creator_modules?.map((m: any) => m.title).join(", ") || "nenhum"}
-- Depoimentos: ${course?.creator_testimonials?.map((t: any) => `${t.name} (${t.stars}★)`).join(", ") || "nenhum"}
-
-Cores atuais da página: ${JSON.stringify(normalizeTheme(profile.theme, profile.theme_color))}
-  `;
-
-  const groqRes = await fetch(GROQ_API_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      messages: [
-        {
-          role: "system",
-          content: `Você é o assistente de edição da plataforma Blackbook. Ajude o criador a editar sua landing page de curso de tatuagem. Interprete os pedidos em português e use as ferramentas disponíveis para fazer as alterações. Seja direto e eficiente. Confirme o que foi feito em português.\n\n${context}`,
-        },
-        { role: "user", content: message },
-      ],
-      tools: TOOLS,
-      tool_choice: "auto",
-      max_tokens: 2048,
-      ...(MODEL.startsWith("openai/gpt-oss") ? { reasoning_effort: "low" } : {}),
-    }),
-  });
-
-  if (!groqRes.ok) {
-    const err = await groqRes.text();
-    console.error("[ai-editor groq]", groqRes.status, err);
-    const detail = groqRes.status === 429 ? "limite de uso da IA atingido, tente em alguns minutos" : `código ${groqRes.status}`;
-    return NextResponse.json({ error: `A IA não respondeu (${detail}).` }, { status: 502 });
-  }
-
-  const groqData = await groqRes.json();
-  const choice = groqData.choices?.[0];
-  const msg = choice?.message;
-  const toolCalls = msg?.tool_calls ?? [];
+  if (course?.creator_modules) course.creator_modules.sort((a: any, b: any) => a.order_index - b.order_index);
+  let page: PageDoc = sanitizePage(course?.page) ?? defaultPage(course);
+  let pageDirty = false;
+  let theme: LPTheme = normalizeTheme(profile.theme, profile.theme_color);
   const actions: string[] = [];
+  const imageErrors = new Set<string>();
+  let imageCalls = 0;
 
-  for (const tc of toolCalls) {
-    const name = tc.function?.name;
-    let input: any = {};
-    try {
-      input = JSON.parse(tc.function?.arguments || "{}");
-    } catch {
-      continue;
+  const photos = (await listCreatorPhotos(profile.id, profile.photo_url)).filter((p) => isAllowedImageUrl(p.url)).slice(0, 12);
+
+  const dataContext = () => `
+DADOS ATUAIS
+Fotos do criador (use estas URLs): ${photos.length ? JSON.stringify(photos) : "nenhuma (pode sugerir subir na aba Mídias)"}
+Criador: ${JSON.stringify({ name: profile.name, bio: profile.bio, specialty: profile.specialty, instagram: profile.instagram })}
+Curso: ${JSON.stringify({ title: course?.title, subtitle: course?.subtitle, main_promise: course?.main_promise, description: course?.description, target_audience: course?.target_audience, price: course?.price, tem_video: !!course?.video_id })}
+Módulos: ${JSON.stringify(course?.creator_modules?.map((m: any) => m.title) ?? [])}
+Depoimentos reais: ${JSON.stringify(course?.creator_testimonials?.map((t: any) => ({ name: t.name, stars: t.stars })) ?? [])}
+Tema: ${JSON.stringify(theme)}
+Página (seções em ordem, com ids): ${JSON.stringify(page.sections)}`;
+
+  const findIdx = (id: string) => page.sections.findIndex((s) => s.id === id);
+  const clampPos = (p: unknown, len: number) => Math.max(0, Math.min(len, Number.isFinite(Number(p)) ? Math.round(Number(p)) : len));
+
+  async function applyTheme(input: any): Promise<string> {
+    const next: LPTheme = { ...theme };
+    for (const { key } of THEME_FIELDS) {
+      let v = typeof input?.[key] === "string" ? input[key].trim() : undefined;
+      if (!v) continue;
+      if (/^metallic$/i.test(v)) v = "metallic";
+      if (/^#[0-9a-fA-F]{3}$/.test(v)) v = `#${[...v.slice(1)].map((c) => c + c).join("")}`;
+      if (isValidThemeValue(key, v)) next[key] = v;
     }
+    if (isValidThemeValue("headingFont", input?.headingFont)) next.headingFont = input.headingFont;
+    const { error } = await db.from("creator_profiles").update({ theme: next, theme_color: next.accent }).eq("id", profile.id);
+    if (error) return `erro: ${error.message}`;
+    theme = next;
+    actions.push("cores/fonte atualizadas");
+    return "ok";
+  }
 
-    if (name === "update_theme") {
-      const current = normalizeTheme(profile.theme, profile.theme_color);
-      const next: LPTheme = { ...current };
-      for (const { key } of THEME_FIELDS) {
-        const v = typeof input?.[key] === "string" ? input[key].trim() : undefined;
-        if (v && isValidThemeValue(key, v.length === 4 ? `#${[...v.slice(1)].map((c) => c + c).join("")}` : v)) {
-          next[key] = v.length === 4 ? `#${[...v.slice(1)].map((c) => c + c).join("")}` : v;
+  const BATCH_ACTIONS = [
+    "add_section", "update_section", "remove_section", "move_section", "update_theme",
+    "update_profile", "update_course", "set_modules", "add_testimonial", "remove_testimonial",
+  ];
+
+  async function runTool(name: string, input: any): Promise<string> {
+    switch (name) {
+      case "apply_changes": {
+        const changes = Array.isArray(input?.changes) ? input.changes.slice(0, 30) : [];
+        if (!changes.length) return "erro: lista changes vazia";
+        const results: string[] = [];
+        for (const c of changes) {
+          const action = String(c?.action || "");
+          results.push(`${action}: ${BATCH_ACTIONS.includes(action) ? await runTool(action, c) : "erro: ação inválida"}`);
         }
+        return results.join("\n");
       }
-      const { error } = await supabase
-        .from("creator_profiles")
-        .update({ theme: next, theme_color: next.accent })
-        .eq("user_id", userId);
-      if (!error) {
-        profile.theme = next;
-        actions.push("cores atualizadas");
+      case "redesign_page":
+      case "replace_page": {
+        const next = sanitizePage({ sections: input.sections });
+        if (!next || !next.sections.length) return "erro: nenhuma seção válida";
+        page = next;
+        pageDirty = true;
+        actions.push("página redesenhada");
+        const themeResult = input.theme ? await applyTheme(input.theme) : "sem tema";
+        return `ok: ${page.sections.length} seções (${page.sections.map((s) => `${s.type}=${s.id}`).join(", ")}); tema: ${themeResult}`;
       }
-    }
-
-    if (name === "update_profile") {
-      const fields = pick(input, PROFILE_FIELDS);
-      if (Object.keys(fields).length) {
-        await supabase.from("creator_profiles").update(fields).eq("user_id", userId);
+      case "add_section": {
+        const s = sanitizeSection({ ...input.section, id: newSectionId() });
+        if (!s) return "erro: tipo de seção inválido";
+        const ctaIdx = page.sections.findIndex((x) => x.type === "cta");
+        const pos = input.position === undefined ? (ctaIdx >= 0 ? ctaIdx : page.sections.length) : clampPos(input.position, page.sections.length);
+        page.sections.splice(pos, 0, s);
+        pageDirty = true;
+        actions.push(`seção "${s.type}" adicionada`);
+        return `ok: id=${s.id}`;
+      }
+      case "update_section": {
+        const i = findIdx(input.id);
+        if (i < 0) return "erro: id não encontrado";
+        const cur = page.sections[i];
+        const merged = sanitizeSection({
+          ...cur,
+          variant: input.variant ?? cur.variant,
+          props: { ...cur.props, ...(input.props ?? {}) },
+          style: { ...cur.style, ...(input.style ?? {}) },
+        });
+        if (!merged) return "erro: dados inválidos";
+        page.sections[i] = merged;
+        pageDirty = true;
+        actions.push(`seção "${cur.type}" atualizada`);
+        return "ok";
+      }
+      case "remove_section": {
+        const i = findIdx(input.id);
+        if (i < 0) return "erro: id não encontrado";
+        const [removed] = page.sections.splice(i, 1);
+        pageDirty = true;
+        actions.push(`seção "${removed.type}" removida`);
+        return "ok";
+      }
+      case "move_section": {
+        const i = findIdx(input.id);
+        if (i < 0) return "erro: id não encontrado";
+        const [s] = page.sections.splice(i, 1);
+        page.sections.splice(clampPos(input.position, page.sections.length), 0, s);
+        pageDirty = true;
+        actions.push(`seção "${s.type}" movida`);
+        return "ok";
+      }
+      case "update_theme":
+        return applyTheme(input);
+      case "update_profile": {
+        const f = pick(input, PROFILE_FIELDS);
+        if (!Object.keys(f).length) return "erro: nada para atualizar";
+        await db.from("creator_profiles").update(f).eq("id", profile.id);
+        Object.assign(profile, f);
         actions.push("perfil atualizado");
+        return "ok";
       }
-    }
-
-    if (name === "update_course" && course) {
-      const fields = pick(input, COURSE_FIELDS);
-      if (fields.price !== undefined) {
-        const cents = priceToCents(fields.price);
-        fields.price = cents > 0 ? cents / 100 : course.price;
+      case "update_course": {
+        if (!course) return "erro: curso não existe";
+        const f = pick(input, COURSE_FIELDS);
+        if (f.price !== undefined) {
+          const cents = priceToCents(f.price);
+          if (cents <= 0) delete f.price;
+          else f.price = cents / 100;
+        }
+        if (!Object.keys(f).length) return "erro: nada para atualizar";
+        await db.from("creator_courses").update(f).eq("id", course.id);
+        Object.assign(course, f);
+        actions.push("dados do curso atualizados");
+        return "ok";
       }
-      if (Object.keys(fields).length) {
-        await supabase.from("creator_courses").update(fields).eq("id", course.id);
-        actions.push("curso atualizado");
+      case "set_modules": {
+        if (!course || !Array.isArray(input.modules)) return "erro";
+        const titles = input.modules.map((m: unknown) => String(m).slice(0, 200)).filter(Boolean).slice(0, 40);
+        await syncModules(course.id, titles);
+        course.creator_modules = titles.map((title: string, order_index: number) => ({ title, order_index }));
+        actions.push("módulos atualizados");
+        return "ok";
       }
-    }
-
-    if (name === "set_modules" && course && Array.isArray(input.modules)) {
-      await syncModules(course.id, input.modules.map(String));
-      actions.push("módulos redefinidos");
-    }
-
-    if (name === "add_module" && course) {
-      const count = course.creator_modules?.length ?? 0;
-      await supabase.from("creator_modules").insert({
-        course_id: course.id, title: input.title, order_index: count,
-      });
-      actions.push(`módulo "${input.title}" adicionado`);
-    }
-
-    if (name === "remove_module" && course) {
-      const match = course.creator_modules?.find((m: any) =>
-        m.title.toLowerCase().includes(input.title.toLowerCase())
-      );
-      if (match) {
-        await supabase.from("creator_modules").delete().eq("id", match.id);
-        actions.push(`módulo "${match.title}" removido`);
+      case "add_testimonial": {
+        if (!course || !input.name || !input.text) return "erro";
+        await db.from("creator_testimonials").insert({
+          course_id: course.id,
+          name: String(input.name).slice(0, 100),
+          role: String(input.role ?? "").slice(0, 100),
+          text: String(input.text).slice(0, 1500),
+          stars: Math.min(5, Math.max(1, Math.round(Number(input.stars) || 5))),
+        });
+        course.creator_testimonials = [...(course.creator_testimonials ?? []), { name: input.name, stars: input.stars ?? 5 }];
+        actions.push(`depoimento de ${input.name} adicionado`);
+        return "ok";
       }
-    }
-
-    if (name === "add_testimonial" && course) {
-      await supabase.from("creator_testimonials").insert({
-        course_id: course.id,
-        name: input.name,
-        role: input.role ?? "",
-        text: input.text,
-        stars: input.stars ?? 5,
-      });
-      actions.push(`depoimento de ${input.name} adicionado`);
-    }
-
-    if (name === "remove_testimonial" && course) {
-      const match = course.creator_testimonials?.find((t: any) =>
-        t.name.toLowerCase().includes(input.name.toLowerCase())
-      );
-      if (match) {
-        await supabase.from("creator_testimonials").delete().eq("id", match.id);
+      case "remove_testimonial": {
+        const match = course?.creator_testimonials?.find((t: any) => t.name?.toLowerCase().includes(String(input.name).toLowerCase()));
+        if (!match?.id) return "erro: não encontrado";
+        await db.from("creator_testimonials").delete().eq("id", match.id);
+        course.creator_testimonials = course.creator_testimonials.filter((t: any) => t.id !== match.id);
         actions.push(`depoimento de ${match.name} removido`);
+        return "ok";
       }
+      case "list_my_photos": {
+        const photos = await listCreatorPhotos(profile.id, profile.photo_url);
+        const usable = photos.filter((p) => isAllowedImageUrl(p.url));
+        return usable.length ? JSON.stringify(usable) : "nenhuma foto enviada ainda (o criador pode subir na aba Mídias)";
+      }
+      case "search_stock_photo": {
+        if (imageCalls >= MAX_IMAGE_CALLS) return "erro: limite de imagens deste pedido atingido";
+        imageCalls++;
+        const r = await searchStockPhoto(String(input.query || "tattoo studio"), input.orientation);
+        if (!r.ok) imageErrors.add(r.error);
+        return r.ok ? JSON.stringify({ url: r.url, credit: r.credit }) : `erro: ${r.error}`;
+      }
+      case "generate_image": {
+        if (imageCalls >= MAX_IMAGE_CALLS) return "erro: limite de imagens deste pedido atingido";
+        imageCalls++;
+        const r = await generateImage(profile.id, String(input.prompt || ""));
+        if (r.ok) actions.push("imagem gerada");
+        else imageErrors.add(r.error);
+        return r.ok ? JSON.stringify({ url: r.url }) : `erro: ${r.error}`;
+      }
+      default:
+        return "erro: ferramenta desconhecida";
     }
   }
 
-  await supabase.from("creator_ai_edits").insert({
+  const messages: any[] = [
+    { role: "system", content: DESIGN_MANUAL },
+    { role: "system", content: dataContext() },
+    { role: "user", content: message.slice(0, 4000) },
+  ];
+
+  const callGroq = () =>
+    fetch(GROQ_API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.GROQ_API_KEY}` },
+      body: JSON.stringify({
+        model: MODEL,
+        messages,
+        tools: TOOLS,
+        tool_choice: "auto",
+        max_tokens: 6000,
+        ...(MODEL.startsWith("openai/gpt-oss") ? { reasoning_effort: "low" } : {}),
+      }),
+    });
+
+  let reply = "";
+  const started = Date.now();
+  for (let round = 0; round < MAX_ROUNDS; round++) {
+    let groqRes = await callGroq();
+
+    // Plano grátis do Groq limita tokens por minuto: espera o tempo indicado e tenta uma vez.
+    if (groqRes.status === 429) {
+      const body = await groqRes.text();
+      const wait = Math.ceil(Number(body.match(/try again in ([\d.]+)s/)?.[1] ?? 20)) + 1;
+      if (Date.now() - started + wait * 1000 < 50_000) {
+        await new Promise((r) => setTimeout(r, wait * 1000));
+        groqRes = await callGroq();
+      } else {
+        groqRes = new Response(body, { status: 429 });
+      }
+    }
+
+    if (!groqRes.ok) {
+      const err = await groqRes.text();
+      console.error("[ai-editor groq]", groqRes.status, err.slice(0, 500));
+      if (!actions.length) {
+        const detail = groqRes.status === 429 ? "limite de uso da IA atingido, tente em alguns minutos" : `código ${groqRes.status}`;
+        return NextResponse.json({ error: `A IA não respondeu (${detail}).` }, { status: 502 });
+      }
+      break;
+    }
+
+    const msg = (await groqRes.json()).choices?.[0]?.message;
+    const toolCalls = msg?.tool_calls ?? [];
+    if (!toolCalls.length) {
+      reply = msg?.content || "";
+      break;
+    }
+
+    messages.push({ role: "assistant", content: msg.content ?? "", tool_calls: toolCalls });
+    for (const tc of toolCalls) {
+      let input: any = {};
+      try {
+        input = JSON.parse(tc.function?.arguments || "{}");
+      } catch {
+        messages.push({ role: "tool", tool_call_id: tc.id, content: "erro: argumentos inválidos" });
+        continue;
+      }
+      const result = await runTool(tc.function?.name, input);
+      messages.push({ role: "tool", tool_call_id: tc.id, content: result.slice(0, 4000) });
+    }
+
+    // Só volta ao modelo quando ele precisa do resultado (URL de imagem). Economiza o limite de tokens.
+    const needsResult = toolCalls.some((tc: any) => IMAGE_TOOLS.includes(tc.function?.name));
+    if (!needsResult) {
+      reply = msg.content || "";
+      break;
+    }
+    if (pageDirty) messages.push({ role: "system", content: `Página atualizada: ${JSON.stringify(page.sections.map((s: Section) => ({ id: s.id, type: s.type })))}` });
+  }
+
+  if (pageDirty && course) {
+    const { error } = await db.from("creator_courses").update({ page }).eq("id", course.id);
+    if (error) {
+      console.error("[ai-editor] salvar page", error.message);
+      return NextResponse.json({
+        error: /page/.test(error.message) ? "Falta rodar o supabase_schema_v5.sql no Supabase." : "Erro ao salvar a página.",
+      }, { status: 500 });
+    }
+  }
+
+  await db.from("creator_ai_edits").insert({
     creator_id: profile.id,
-    prompt: message,
-    action: toolCalls.map((t: any) => t.function?.name).join(", "),
-    result: actions.join(", "),
+    prompt: message.slice(0, 2000),
+    action: actions.join(", ").slice(0, 500),
+    result: reply.slice(0, 2000),
   });
 
-  const reply =
-    msg?.content ||
-    (actions.length > 0
-      ? `Feito! ${actions.join(", ")}.`
-      : "Entendi, mas não encontrei nada para alterar. Pode ser mais específico?");
+  if (!reply) {
+    reply = actions.length ? `Feito: ${Array.from(new Set(actions)).join(", ")}.` : "Não consegui aplicar mudanças. Pode detalhar o que quer alterar?";
+  }
+  if (imageErrors.size && !/imagem|foto/i.test(reply)) {
+    reply += `\nAtenção: não consegui obter a imagem. ${Array.from(imageErrors).join(" ")}`;
+  }
 
-  return NextResponse.json({ reply, actions, refreshLP: actions.length > 0 });
+  return NextResponse.json({ reply, actions: Array.from(new Set(actions)), refreshLP: actions.length > 0 });
 }

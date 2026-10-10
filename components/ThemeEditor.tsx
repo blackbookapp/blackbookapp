@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Check, Loader2 } from "lucide-react";
-import { THEME_PRESETS, THEME_FIELDS, type LPTheme } from "@/lib/theme";
+import { THEME_PRESETS, THEME_FIELDS, HEADING_FONTS, type LPTheme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 
 const METALLIC = "linear-gradient(135deg, #E5E5E5 0%, #A3A3A3 50%, #525252 100%)";
@@ -69,7 +69,7 @@ export function ThemeEditor({
           <button
             key={p.name}
             type="button"
-            onClick={() => apply(p.theme)}
+            onClick={() => apply({ ...p.theme, headingFont: theme.headingFont })}
             title={p.name}
             className={cn(
               "rounded-xl overflow-hidden border-2 transition-all text-left",
@@ -101,6 +101,18 @@ export function ThemeEditor({
           </label>
         ))}
       </div>
+      <label className="flex items-center gap-3 text-xs text-white/80">
+        Fonte dos títulos
+        <select
+          value={theme.headingFont || "inter"}
+          onChange={(e) => apply({ ...theme, headingFont: e.target.value })}
+          className="bg-white/5 border border-white/15 rounded-lg px-3 py-1.5 text-xs focus:outline-none"
+        >
+          {Object.entries(HEADING_FONTS).map(([k, f]) => (
+            <option key={k} value={k} className="bg-black">{f.label}</option>
+          ))}
+        </select>
+      </label>
       {theme.button !== "metallic" && (
         <button type="button" onClick={() => apply({ ...theme, button: "metallic" })}
           className="text-[11px] text-muted-foreground hover:text-white underline">

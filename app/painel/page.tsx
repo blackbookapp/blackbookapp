@@ -279,7 +279,7 @@ function EditorTab({ profile }: { profile: CreatorProfile }) {
   const [messages, setMessages] = useState<Array<{ role: "user" | "ai"; text: string; actions?: string[] }>>([
     {
       role: "ai",
-      text: `Oi, ${profile.name.split(" ")[0]}! Sou seu assistente de edição. Me diga o que quer mudar na sua LP e eu faço na hora.\n\nExemplos:\n• "Muda o título do curso para Blackwork do Zero ao Avançado"\n• "Adiciona um módulo chamado Técnicas de sombreamento"\n• "Minha bio agora é: Tatuador há 10 anos..."\n• "Remove o depoimento da Maria"`,
+      text: `Oi, ${profile.name.split(" ")[0]}! Sou seu web designer. Me diga o que quer e eu aplico na hora.\n\nExemplos:\n• "Deixa minha página mais profissional, estilo blackwork, preto e vermelho"\n• "Cria uma seção de perguntas frequentes e uma de garantia de 7 dias"\n• "Coloca uma galeria com as fotos dos meus trabalhos"\n• "Usa uma foto de estúdio escuro no fundo da capa"\n• "Troca a fonte dos títulos para algo gótico"\n\nDica: suba fotos dos seus trabalhos na aba Mídias para eu usar.`,
     },
   ]);
   const [input, setInput] = useState("");
