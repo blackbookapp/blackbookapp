@@ -10,7 +10,6 @@ export const db = createClient(
   { auth: { persistSession: false } }
 );
 
-export const PLATFORM_FEE_PERCENT = Number(process.env.PLATFORM_FEE_PERCENT ?? 1);
 
 export function appUrl() {
   return (process.env.NEXT_PUBLIC_APP_URL || "https://blackbookapp.com.br").replace(/\/$/, "");
@@ -96,7 +95,7 @@ export async function recordCoursePurchase(session: Stripe.Checkout.Session) {
   if (!courseId || !creatorId || !email) return { ok: false as const, reason: "missing_data" };
 
   const total = session.amount_total ?? 0;
-  const fee = Number(session.metadata?.platform_fee ?? Math.round(total * (PLATFORM_FEE_PERCENT / 100)));
+  const fee = Number(session.metadata?.platform_fee ?? 0);
   const coupon = session.metadata?.coupon || null;
   const paymentId = (session.payment_intent as string) || session.id;
   const name = session.customer_details?.name || null;

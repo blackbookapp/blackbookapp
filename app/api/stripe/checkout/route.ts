@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { auth, currentUser } from "@clerk/nextjs/server";
-import { db, priceToCents, PLATFORM_FEE_PERCENT, appUrl } from "@/lib/creator-server";
+import { db, priceToCents, appUrl } from "@/lib/creator-server";
+import { platformFeeCents } from "@/lib/plans";
 import { one } from "@/lib/one";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: "2026-07-29.dahlia" as any });
@@ -25,7 +26,7 @@ async function findCoupon(courseId: string, rawCode: string) {
 async function loadCourse(slug: string) {
   const { data: profile } = await db
     .from("creator_profiles")
-    .select("id, name, stripe_account_id, stripe_onboarding_done, creator_courses(*)")
+    .select("id, name, stripe_account_id, stripe_onboarding_done, platform_paid, creator_courses(*)")
     .eq("slug", slug)
     .maybeSingle();
   return { profile, course: one((profile as any)?.creator_courses) as any };
@@ -71,7 +72,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Cupom inválido ou expirado." }, { status: 400 });
   }
   const amount = coupon ? Math.round(baseCents * (1 - coupon.percent_off / 100)) : baseCents;
-  const applicationFee = Math.round(amount * (PLATFORM_FEE_PERCENT / 100));
+  // Plano Grátis: 5%; Plano Pro: 0%.
+  const applicationFee = platformFeeCents(amount, profile.platform_paid);
 
   const { userId } = await auth();
   const user = userId ? await currentUser() : null;
@@ -96,10 +98,8 @@ export async function POST(req: NextRequest) {
     ],
     success_url: `${appUrl()}/c/${slug}/obrigado?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${appUrl()}/c/${slug}`,
-    payment_intent_data: {
-      application_fee_amount: applicationFee,
-      transfer_data: { destination: profile.stripe_account_id },
-    },
+    // Cobrança direta na conta do criador: a taxa do Stripe sai dele; a plataforma recebe só a comissão.
+    ...(applicationFee > 0 ? { payment_intent_data: { application_fee_amount: applicationFee } } : {}),
     metadata: {
       type: "course_sale",
       creator_slug: slug,
@@ -111,6 +111,8 @@ export async function POST(req: NextRequest) {
     },
   };
 
+  const onCreator = { stripeAccount: profile.stripe_account_id as string };
+
   // Parcelamento no cartão (contas Stripe do Brasil). Se o Stripe recusar, cobra à vista.
   let session: Stripe.Checkout.Session;
   if ((Number(course.price_installments) || 0) > 1) {
@@ -118,13 +120,13 @@ export async function POST(req: NextRequest) {
       session = await stripe.checkout.sessions.create({
         ...params,
         payment_method_options: { card: { installments: { enabled: true } } },
-      });
+      }, onCreator);
     } catch (e: any) {
       console.warn("[checkout] parcelamento indisponível, seguindo à vista:", e?.message);
-      session = await stripe.checkout.sessions.create(params);
+      session = await stripe.checkout.sessions.create(params, onCreator);
     }
   } else {
-    session = await stripe.checkout.sessions.create(params);
+    session = await stripe.checkout.sessions.create(params, onCreator);
   }
 
   return NextResponse.json({ url: session.url });

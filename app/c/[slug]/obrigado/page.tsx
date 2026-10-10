@@ -24,7 +24,13 @@ export default async function ObrigadoPage({
 
   if (session_id) {
     try {
-      const session = await stripe.checkout.sessions.retrieve(session_id);
+      // A sessão é criada na conta Stripe do criador (cobrança direta).
+      const { data: creator } = await db.from("creator_profiles").select("stripe_account_id").eq("slug", slug).maybeSingle();
+      const session = await stripe.checkout.sessions.retrieve(
+        session_id,
+        {},
+        creator?.stripe_account_id ? { stripeAccount: creator.stripe_account_id } : undefined
+      );
       if (session.metadata?.creator_slug === slug) {
         email = (session.customer_details?.email || "").toLowerCase();
         paid = session.payment_status === "paid";

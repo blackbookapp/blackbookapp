@@ -47,6 +47,7 @@ interface CreatorProfile {
   specialty: string;
   stripe_account_id: string | null;
   stripe_onboarding_done: boolean;
+  platform_paid?: boolean;
   theme_color?: string | null;
   theme?: Record<string, string> | null;
   creator_courses: Array<{
@@ -428,6 +429,28 @@ function ConfigTab({ profile }: { profile: CreatorProfile }) {
     <div className="space-y-6 max-w-2xl">
       <h2 className="text-xl font-black">Configurações</h2>
 
+      {/* Plano */}
+      <div className={cn("glass rounded-2xl border p-6", profile.platform_paid ? "border-primary/40 bg-primary/5" : "border-white/10")}>
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-1">Seu plano</p>
+            <p className="font-black text-lg">{profile.platform_paid ? "Pro — 0% de comissão" : "Grátis — 5% de comissão por venda"}</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {profile.platform_paid
+                ? "Você fica com 100% das vendas (a taxa do Stripe é descontada pelo Stripe)."
+                : "Passe para o Pro com um pagamento único de R$ 997 e pare de pagar comissão."}
+            </p>
+          </div>
+          {!profile.platform_paid && (
+            <Link href={`/pagar?slug=${profile.slug}`}>
+              <Button className="metallic-gradient text-black font-bold text-[10px] tracking-widest uppercase h-9 px-4 rounded-xl whitespace-nowrap">
+                Virar Pro <ArrowRight className="w-3.5 h-3.5 ml-1" />
+              </Button>
+            </Link>
+          )}
+        </div>
+      </div>
+
       {/* Stripe Connect */}
       <div className="glass rounded-2xl border border-white/10 p-6">
         <div className="flex items-center justify-between mb-4">
@@ -495,7 +518,8 @@ function PainelContent() {
   const { userId, isLoaded } = useAuth();
   const params = useSearchParams();
   const ativado = params.get("ativado") === "true";
-  const [showBanner, setShowBanner] = useState(ativado);
+  const publicado = params.get("publicado") === "true";
+  const [showBanner, setShowBanner] = useState(ativado || publicado);
   const [profile, setProfile] = useState<CreatorProfile | null>(null);
   const [sales, setSales] = useState<Sale[]>([]);
   const [active, setActive] = useState("dashboard");
@@ -580,7 +604,7 @@ function PainelContent() {
             <div className="flex items-center gap-3">
               <PartyPopper className="w-5 h-5 text-green-400 flex-shrink-0" />
               <div>
-                <p className="font-bold text-green-300">Plataforma ativada com sucesso!</p>
+                <p className="font-bold text-green-300">{ativado ? "Plano Pro ativado!" : "Sua página está publicada!"}</p>
                 <p className="text-xs text-green-400/70">Sua landing page está no ar. Conecte o Stripe para começar a receber.</p>
               </div>
             </div>

@@ -49,7 +49,7 @@ export default async function CriadorDetail({ params }: { params: Promise<{ id: 
             </p>
             <div className="flex flex-wrap gap-1 mt-2">
               {course?.is_published ? <Badge tone="green">página no ar</Badge> : <Badge tone="gray">rascunho</Badge>}
-              {c.platform_paid ? <Badge tone="green">ativação {fmtDate(c.platform_paid_at)}</Badge> : <Badge tone="yellow">ativação pendente</Badge>}
+              {c.platform_paid ? <Badge tone="green">plano Pro desde {fmtDate(c.platform_paid_at)}</Badge> : <Badge tone="gray">plano Grátis (5%)</Badge>}
               {c.stripe_onboarding_done ? <Badge tone="green">stripe conectado</Badge> : <Badge tone="yellow">sem stripe</Badge>}
             </div>
           </div>
@@ -79,11 +79,11 @@ export default async function CriadorDetail({ params }: { params: Promise<{ id: 
         ))}
         {c.platform_paid ? (
           <form action={setActivation.bind(null, id, false)}>
-            <ConfirmButton tone="danger" confirm="Revogar a ativação? A página sai do ar e o criador precisará pagar de novo para publicar.">Revogar ativação</ConfirmButton>
+            <ConfirmButton tone="danger" confirm={`Voltar ${c.name} para o plano Grátis? As próximas vendas pagam 5% de comissão.`}>Voltar para Grátis</ConfirmButton>
           </form>
         ) : (
           <form action={setActivation.bind(null, id, true)}>
-            <ConfirmButton confirm={`Liberar a ativação de ${c.name} sem cobrança? A página vai para o ar.`}>Liberar ativação grátis</ConfirmButton>
+            <ConfirmButton confirm={`Dar o plano Pro para ${c.name} sem cobrança? As próximas vendas ficam sem comissão.`}>Dar plano Pro grátis</ConfirmButton>
           </form>
         )}
       </div>

@@ -42,11 +42,11 @@ export default async function AdminOverview() {
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <Stat label="Vendido na plataforma" value={formatBRL(gmv)} hint={`${paid.length} vendas`} />
-        <Stat label="Taxa recebida (1%)" value={formatBRL(fees)} />
+        <Stat label="Comissões recebidas" value={formatBRL(fees)} />
         <Stat label="Vendido nos últimos 30 dias" value={formatBRL(paid30.reduce((a, s) => a + s.amount_total, 0))} hint={`${paid30.length} vendas · ${views ?? 0} visitas`} />
         <Stat label="Estornos" value={refunded.length.toString()} hint={formatBRL(refunded.reduce((a, s) => a + s.amount_total, 0))} />
         <Stat label="Criadores" value={list.length.toString()} />
-        <Stat label="Ativações pagas" value={list.filter((c) => c.platform_paid).length.toString()} />
+        <Stat label="Criadores no Pro" value={list.filter((c) => c.platform_paid).length.toString()} />
         <Stat label="Páginas no ar" value={published.toString()} />
         <Stat label="Alunos ativos" value={(activeStudents ?? 0).toString()} />
       </div>

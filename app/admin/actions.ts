@@ -21,11 +21,11 @@ export async function setPublished(creatorId: string, published: boolean) {
 
 export async function setActivation(creatorId: string, paid: boolean) {
   await guard();
+  // Só muda o plano (Pro = 0% de comissão). Publicar/despublicar é outra ação.
   await db
     .from("creator_profiles")
     .update({ platform_paid: paid, platform_paid_at: paid ? new Date().toISOString() : null })
     .eq("id", creatorId);
-  await db.from("creator_courses").update({ is_published: paid }).eq("creator_id", creatorId);
   refresh(creatorId);
 }
 

@@ -7,7 +7,8 @@ const STATUS = [
   { value: "todos", label: "Todos" },
   { value: "no-ar", label: "Página no ar" },
   { value: "rascunho", label: "Rascunho" },
-  { value: "sem-ativacao", label: "Ativação pendente" },
+  { value: "sem-ativacao", label: "Plano Grátis" },
+  { value: "pro", label: "Plano Pro" },
   { value: "sem-stripe", label: "Sem Stripe" },
 ];
 
@@ -38,6 +39,7 @@ export default async function CriadoresPage({ searchParams }: { searchParams: Pr
     if (status === "no-ar") return !!course?.is_published;
     if (status === "rascunho") return !course?.is_published;
     if (status === "sem-ativacao") return !c.platform_paid;
+    if (status === "pro") return !!c.platform_paid;
     if (status === "sem-stripe") return !c.stripe_onboarding_done;
     return true;
   });
@@ -62,7 +64,7 @@ export default async function CriadoresPage({ searchParams }: { searchParams: Pr
               <td>{course?.title || "—"}{course?.price ? <p className="text-xs text-muted-foreground">R$ {course.price}</p> : null}</td>
               <td className="space-y-1">
                 <div>{course?.is_published ? <Badge tone="green">no ar</Badge> : <Badge tone="gray">rascunho</Badge>}</div>
-                <div>{c.platform_paid ? <Badge tone="green">ativação ok</Badge> : <Badge tone="yellow">ativação pendente</Badge>}</div>
+                <div>{c.platform_paid ? <Badge tone="green">Pro</Badge> : <Badge tone="gray">Grátis</Badge>}</div>
                 <div>{c.stripe_onboarding_done ? <Badge tone="green">stripe ok</Badge> : <Badge tone="yellow">sem stripe</Badge>}</div>
               </td>
               <td className="whitespace-nowrap">{t ? <>{formatBRL(t.total)}<p className="text-xs text-muted-foreground">{t.count} vendas</p></> : "—"}</td>

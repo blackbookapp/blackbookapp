@@ -142,10 +142,10 @@ const CREATORS = [
 
 const FAQS = [
   { q: "Preciso saber programar para criar minha LP?", a: "Não. Você preenche um formulário com o nome do curso, seus módulos, depoimentos e preço — a plataforma gera tudo automaticamente. Leva menos de 10 minutos." },
-  { q: "Como funciona o pagamento dos meus alunos?", a: "Você conecta seu próprio checkout (Stripe, Hotmart ou Kiwify). O Blackbook gera o botão de compra na sua LP e direciona o aluno para o seu link de pagamento. Você recebe direto na sua conta." },
+  { q: "Como funciona o pagamento dos meus alunos?", a: "Você conecta sua conta Stripe em poucos cliques. O Blackbook gera o checkout (cartão, com parcelamento) e o dinheiro cai direto na sua conta Stripe. O acesso do aluno é liberado automaticamente." },
   { q: "Onde ficam hospedados os meus vídeos?", a: "Seus vídeos ficam no Cloudflare Stream, um dos CDNs mais rápidos do mundo. O upload é direto pela plataforma — sem custo extra para você." },
   { q: "Posso usar meu próprio domínio?", a: "Sim. Por padrão sua LP fica em blackbook.app/c/seu-nome. Se quiser usar um domínio próprio (ex: meucurso.com.br), basta conectar nas configurações em menos de 5 minutos." },
-  { q: "Qual é a comissão do Blackbook por venda?", a: "O Blackbook cobra apenas 1% sobre cada venda realizada. Você fica com 99% — sem mensalidade, sem taxa fixa além do acesso único de R$ 997." },
+  { q: "Quanto custa o Blackbook?", a: "Você escolhe: plano Grátis (R$ 0 para começar e 5% de comissão por venda) ou plano Pro (pagamento único de R$ 997 e 0% de comissão). Sem mensalidade. Em qualquer plano, a taxa de processamento do Stripe é descontada pelo próprio Stripe." },
   { q: "Para quais estilos de tatuagem é indicado?", a: "Para todos! Blackwork, realismo, fineline, old school, aquarela, geométrico... qualquer tatuador que quer transformar seu conhecimento em curso pode usar o Blackbook." },
 ];
 
@@ -409,63 +409,52 @@ export default function BlackbookPage() {
             <h2 className="text-4xl md:text-6xl font-black uppercase tracking-tighter">Escolha seu plano</h2>
           </FadeUp>
 
-          <div className="max-w-2xl mx-auto">
-            <FadeUp>
-              <div className="glass rounded-3xl border border-primary/50 p-10 flex flex-col bg-primary/5 relative overflow-hidden">
-                <div className="absolute -top-20 -right-20 w-64 h-64 bg-primary/10 rounded-full blur-3xl" />
-                <div className="relative">
-                  <div className="flex items-center justify-between mb-8">
-                    <div>
-                      <p className="text-xs font-bold uppercase tracking-widest text-primary mb-1">Acesso Completo</p>
-                      <p className="text-sm text-muted-foreground">Tudo que você precisa para vender</p>
-                    </div>
-                    <div className="bg-primary text-black text-[9px] font-black px-3 py-1 rounded-full uppercase tracking-widest flex items-center gap-1">
-                      <Sparkles className="w-2.5 h-2.5" /> Inclui tudo
-                    </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {[
+              {
+                name: "Grátis", price: "R$ 0", sub: "para começar", fee: "5% de comissão por venda",
+                desc: "Publique hoje sem pagar nada. Você só paga quando vender.", cta: "Começar grátis", highlight: false,
+              },
+              {
+                name: "Pro", price: "R$ 997", sub: "pagamento único", fee: "0% de comissão",
+                desc: "Fique com todas as vendas. Ideal para quem já tem audiência.", cta: "Quero o Pro", highlight: true,
+              },
+            ].map((p) => (
+              <FadeUp key={p.name}>
+                <div className={`glass rounded-3xl border p-8 h-full flex flex-col relative overflow-hidden ${p.highlight ? "border-primary/50 bg-primary/5" : "border-white/10"}`}>
+                  <p className="text-xs font-bold uppercase tracking-widest text-primary mb-3">{p.name}</p>
+                  <div className="mb-2">
+                    <span className="text-5xl font-black">{p.price}</span>
+                    <span className="text-muted-foreground text-sm ml-2">{p.sub}</span>
                   </div>
-
-                  <div className="mb-3">
-                    <span className="text-6xl font-black">R$ 997</span>
-                    <span className="text-muted-foreground text-sm ml-2">pagamento único</span>
-                  </div>
-                  <p className="text-sm text-muted-foreground mb-10 flex items-center gap-2">
-                    <span className="w-5 h-5 rounded-full bg-primary/20 text-primary flex items-center justify-center text-[10px] font-black">+</span>
-                    <span>1% de comissão por venda — você fica com 99%</span>
-                  </p>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-10">
+                  <p className="text-sm font-bold mb-2">{p.fee}</p>
+                  <p className="text-sm text-muted-foreground mb-8">{p.desc}</p>
+                  <div className="space-y-3 mb-8 flex-1">
                     {[
-                      "Cursos ilimitados",
-                      "Landing pages automáticas",
-                      "Hospedagem de vídeos (500GB)",
-                      "Checkout integrado (Stripe / Hotmart / Kiwify)",
-                      "Área do aluno completa",
-                      "Domínio personalizado",
-                      "Analytics de vendas",
-                      "Setup guiado passo a passo",
-                      "Suporte prioritário",
-                      "Atualizações vitalícias",
+                      "Landing page de vendas com IA",
+                      "Checkout com parcelamento no cartão",
+                      "Área do aluno com aulas protegidas",
+                      "Upload de vídeos e fotos",
+                      "Cupons e relatórios de vendas",
                     ].map((f) => (
                       <div key={f} className="flex items-center gap-2.5 text-sm">
                         <CheckCircle className="w-3.5 h-3.5 text-primary shrink-0" /> {f}
                       </div>
                     ))}
                   </div>
-
                   <Link href="/criar">
-                    <Button className="w-full metallic-gradient text-black font-bold h-14 rounded-2xl text-[11px] tracking-widest uppercase hover:scale-[1.02] transition-transform shadow-2xl shadow-primary/20">
-                      Garantir Meu Acesso <ArrowRight className="w-4 h-4 ml-2" />
+                    <Button className={`w-full font-bold h-12 rounded-2xl text-[11px] tracking-widest uppercase ${p.highlight ? "metallic-gradient text-black" : "bg-transparent border border-white/20 hover:bg-white/5"}`}>
+                      {p.cta} <ArrowRight className="w-4 h-4 ml-2" />
                     </Button>
                   </Link>
-
-                  <p className="text-xs text-muted-foreground mt-4 flex items-center justify-center gap-2">
-                    <Shield className="w-3 h-3" />
-                    Acesso imediato após o pagamento · Sem mensalidade
-                  </p>
                 </div>
-              </div>
-            </FadeUp>
+              </FadeUp>
+            ))}
           </div>
+          <p className="text-xs text-muted-foreground mt-6 flex items-center justify-center gap-2 text-center">
+            <Shield className="w-3 h-3 shrink-0" />
+            Sem mensalidade. A taxa de processamento do Stripe é descontada pelo próprio Stripe em cada venda.
+          </p>
         </div>
       </section>
 
