@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { getCreatorByUser } from "@/lib/creator-server";
+import { db, getCreatorByUser } from "@/lib/creator-server";
 
 // Proxy TUS → Cloudflare Stream para vídeos de aula do criador.
 // Aulas sobem com "requiresignedurls" (só tocam com token gerado para alunos matriculados).
@@ -56,5 +56,19 @@ export async function POST(request: Request) {
   headers.set("Location", destination);
   const mediaId = cf.headers.get("stream-media-id");
   if (mediaId) headers.set("stream-media-id", mediaId);
+
+  // Vídeos da biblioteca (aba Mídias) ficam disponíveis para a página e para a IA.
+  if (isPublic && mediaId && new URL(request.url).searchParams.get("library") === "1") {
+    const nameMeta = clientMeta.split(",").map((p) => p.trim().split(" ")).find(([k]) => k === "name")?.[1];
+    const title = nameMeta ? Buffer.from(nameMeta, "base64").toString("utf8").slice(0, 200) : "Vídeo";
+    await db.from("creator_media").insert({
+      creator_id: creator.profile.id,
+      type: "video",
+      cloudflare_id: mediaId,
+      title,
+      size_bytes: Number(uploadLength),
+      thumbnail_url: `https://videodelivery.net/${mediaId}/thumbnails/thumbnail.jpg?time=2s&height=360`,
+    });
+  }
   return new NextResponse(null, { status: 201, headers });
 }

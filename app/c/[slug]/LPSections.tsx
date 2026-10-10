@@ -165,9 +165,10 @@ function Hero({ s, ctx }: { s: Section; ctx: LPContext }) {
 }
 
 function Video({ s, ctx }: { s: Section; ctx: LPContext }) {
-  if (!ctx.course?.video_id) return null;
+  const videoId = s.props.video_id || ctx.course?.video_id;
+  if (!videoId) return null;
   return (
-    <Shell section={s} ctx={ctx} inner="max-w-4xl">
+    <Shell section={s} ctx={ctx} inner={s.variant === "wide" ? "max-w-6xl" : "max-w-4xl"}>
       {(s.props.title || s.props.eyebrow) && (
         <FadeUp className="text-center mb-10">
           <Eyebrow>{s.props.eyebrow}</Eyebrow>
@@ -179,7 +180,7 @@ function Video({ s, ctx }: { s: Section; ctx: LPContext }) {
         <div className="relative">
           <div className="absolute -inset-4 bg-(--lp-accent)/10 rounded-3xl blur-2xl" />
           <div className="relative glass rounded-3xl border border-(--lp-text)/10 overflow-hidden shadow-2xl aspect-video">
-            <iframe src={`https://iframe.cloudflarestream.com/${ctx.course.video_id}?controls=true&preload=true`}
+            <iframe src={`https://iframe.cloudflarestream.com/${videoId}?controls=true&preload=true`}
               allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;" allowFullScreen
               className="absolute inset-0 w-full h-full" style={{ border: "none" }} />
           </div>

@@ -3,7 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { db, syncModules, priceToCents } from "@/lib/creator-server";
 import { normalizeTheme, isValidThemeValue, THEME_FIELDS, HEADING_FONTS, type LPTheme } from "@/lib/theme";
 import {
-  defaultPage, sanitizePage, sanitizeSection, schemaForPrompt, isAllowedImageUrl, newSectionId,
+  defaultPage, sanitizePage, sanitizeSection, schemaForPrompt, isAllowedImageUrl, isValidVideoId, newSectionId,
   type PageDoc, type Section,
 } from "@/lib/page-schema";
 import { generateImage, searchStockPhoto, listCreatorPhotos } from "@/lib/ai-images";
@@ -52,10 +52,19 @@ export async function POST(req: NextRequest) {
   let imageCalls = 0;
 
   const photos = (await listCreatorPhotos(profile.id, profile.photo_url)).filter((p) => isAllowedImageUrl(p.url)).slice(0, 12);
+  const { data: videoRows } = await db
+    .from("creator_media")
+    .select("cloudflare_id, title")
+    .eq("creator_id", profile.id)
+    .eq("type", "video")
+    .order("created_at", { ascending: false })
+    .limit(15);
+  const videos = (videoRows ?? []).filter((v) => isValidVideoId(v.cloudflare_id)).map((v) => ({ video_id: v.cloudflare_id, title: v.title }));
 
   const dataContext = () => `
 DADOS ATUAIS
 Fotos do criador (use estas URLs): ${photos.length ? JSON.stringify(photos) : "nenhuma (pode sugerir subir na aba Mídias)"}
+Vídeos do criador (use video_id numa seção video): ${videos.length ? JSON.stringify(videos) : "nenhum"}
 Criador: ${JSON.stringify({ name: profile.name, bio: profile.bio, specialty: profile.specialty, instagram: profile.instagram })}
 Curso: ${JSON.stringify({ title: course?.title, subtitle: course?.subtitle, main_promise: course?.main_promise, description: course?.description, target_audience: course?.target_audience, price: course?.price, tem_video: !!course?.video_id })}
 Módulos: ${JSON.stringify(course?.creator_modules?.map((m: any) => m.title) ?? [])}

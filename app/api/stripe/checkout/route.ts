@@ -76,7 +76,7 @@ export async function POST(req: NextRequest) {
   const user = userId ? await currentUser() : null;
   const email = user?.primaryEmailAddress?.emailAddress;
 
-  const session = await stripe.checkout.sessions.create({
+  const params: Stripe.Checkout.SessionCreateParams = {
     mode: "payment",
     payment_method_types: ["card"],
     ...(email ? { customer_email: email } : {}),
@@ -108,7 +108,23 @@ export async function POST(req: NextRequest) {
       coupon: coupon?.code || "",
       user_id: userId || "",
     },
-  });
+  };
+
+  // Parcelamento no cartão (contas Stripe do Brasil). Se o Stripe recusar, cobra à vista.
+  let session: Stripe.Checkout.Session;
+  if ((Number(course.price_installments) || 0) > 1) {
+    try {
+      session = await stripe.checkout.sessions.create({
+        ...params,
+        payment_method_options: { card: { installments: { enabled: true } } },
+      });
+    } catch (e: any) {
+      console.warn("[checkout] parcelamento indisponível, seguindo à vista:", e?.message);
+      session = await stripe.checkout.sessions.create(params);
+    }
+  } else {
+    session = await stripe.checkout.sessions.create(params);
+  }
 
   return NextResponse.json({ url: session.url });
 }

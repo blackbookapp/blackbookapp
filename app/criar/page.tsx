@@ -367,7 +367,23 @@ function Step4({ d, set }: { d: WizardData; set: (k: keyof WizardData, v: any) =
   );
 }
 
+function installmentValue(price: string, installments: string) {
+  const p = parseFloat(String(price).replace(/\./g, "").replace(",", "."));
+  const n = parseInt(installments);
+  if (!Number.isFinite(p) || p <= 0 || !Number.isFinite(n) || n < 2) return "";
+  return (Math.ceil((p / n) * 100) / 100).toFixed(2).replace(".", ",");
+}
+
 function Step5({ d, set }: { d: WizardData; set: (k: keyof WizardData, v: any) => void }) {
+  const setPrice = (v: string) => {
+    set("price", v);
+    set("price_installment_value", installmentValue(v, d.price_installments));
+  };
+  const setInstallments = (v: string) => {
+    set("price_installments", v);
+    set("price_installment_value", installmentValue(d.price, v));
+  };
+
   return (
     <div className="space-y-5">
       <div className="glass rounded-2xl border border-primary/20 bg-primary/5 p-4 flex items-start gap-3">
@@ -381,12 +397,12 @@ function Step5({ d, set }: { d: WizardData; set: (k: keyof WizardData, v: any) =
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
         <Field label="Preço (R$)" hint="Valor cheio">
-          <Input value={d.price} onChange={(v) => set("price", v)} placeholder="997" type="number" />
+          <Input value={d.price} onChange={setPrice} placeholder="997" type="number" />
         </Field>
         <Field label="Nº de parcelas" hint="0 = à vista">
-          <Input value={d.price_installments} onChange={(v) => set("price_installments", v)} placeholder="12" type="number" />
+          <Input value={d.price_installments} onChange={setInstallments} placeholder="12" type="number" />
         </Field>
-        <Field label="Valor da parcela (R$)" hint="Automático ou manual">
+        <Field label="Valor da parcela (R$)" hint="Calculado automaticamente (pode editar)">
           <Input value={d.price_installment_value} onChange={(v) => set("price_installment_value", v)}
             placeholder="99,70" />
         </Field>

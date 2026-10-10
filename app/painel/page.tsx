@@ -20,6 +20,7 @@ import { ConteudoTab } from "@/components/painel/ConteudoTab";
 import { AlunosTab } from "@/components/painel/AlunosTab";
 import { CuponsTab } from "@/components/painel/CuponsTab";
 import { StatsPanel } from "@/components/painel/StatsPanel";
+import { MidiasTab } from "@/components/painel/MidiasTab";
 import { ThemeEditor } from "@/components/ThemeEditor";
 import { normalizeTheme } from "@/lib/theme";
 
@@ -414,113 +415,6 @@ function EditorTab({ profile }: { profile: CreatorProfile }) {
           title="Preview da LP"
         />
       </div>
-    </div>
-  );
-}
-
-// ─── Mídias Tab ───────────────────────────────────────────────
-function MidiasTab() {
-  const [medias, setMedias] = useState<any[]>([]);
-  const [uploading, setUploading] = useState(false);
-  const [filter, setFilter] = useState<"all" | "video" | "image">("all");
-  const fileRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    fetch("/api/upload").then((r) => r.json()).then(setMedias);
-  }, []);
-
-  const upload = async (file: File) => {
-    setUploading(true);
-    const fd = new FormData();
-    fd.append("file", file);
-    fd.append("type", file.type.startsWith("video/") ? "video" : "image");
-
-    try {
-      const res = await fetch("/api/upload", { method: "POST", body: fd });
-      const data = await res.json();
-
-      if (data.uploadURL) {
-        await fetch(data.uploadURL, { method: "PUT", body: file });
-      }
-
-      const updated = await fetch("/api/upload").then((r) => r.json());
-      setMedias(updated);
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const filtered = filter === "all" ? medias : medias.filter((m) => m.type === filter);
-
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-black">Mídias</h2>
-          <p className="text-sm text-muted-foreground mt-0.5">Seus vídeos e fotos</p>
-        </div>
-        <Button onClick={() => fileRef.current?.click()} disabled={uploading}
-          className="metallic-gradient text-black font-bold text-[11px] tracking-widest uppercase h-10 px-5 rounded-xl">
-          {uploading ? "Enviando..." : <><Upload className="w-3.5 h-3.5 mr-1.5" /> Enviar mídia</>}
-        </Button>
-        <input ref={fileRef} type="file" accept="video/*,image/*" className="hidden"
-          onChange={(e) => { const f = e.target.files?.[0]; if (f) upload(f); }} />
-      </div>
-
-      <div className="flex gap-2">
-        {(["all", "video", "image"] as const).map((t) => (
-          <button key={t} onClick={() => setFilter(t)}
-            className={cn("px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-widest transition-all",
-              filter === t ? "bg-primary/20 text-primary border border-primary/30" : "border border-white/15 text-muted-foreground hover:border-white/30"
-            )}>
-            {t === "all" ? "Todas" : t === "video" ? "Vídeos" : "Fotos"}
-          </button>
-        ))}
-      </div>
-
-      {filtered.length === 0 ? (
-        <div
-          onDragOver={(e) => e.preventDefault()}
-          onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) upload(f); }}
-          className="border-2 border-dashed border-white/15 rounded-2xl p-16 text-center hover:border-primary/30 transition-colors cursor-pointer"
-          onClick={() => fileRef.current?.click()}>
-          <Upload className="w-10 h-10 mx-auto mb-3 text-muted-foreground opacity-40" />
-          <p className="text-sm text-muted-foreground">Arraste vídeos ou fotos aqui</p>
-          <p className="text-xs text-muted-foreground/60 mt-1">MP4, MOV, JPG, PNG, WebP</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-          {filtered.map((m) => (
-            <div key={m.id} className="glass rounded-xl border border-white/10 overflow-hidden group">
-              <div className="aspect-video bg-white/5 flex items-center justify-center">
-                {m.type === "video"
-                  ? <Video className="w-8 h-8 text-muted-foreground opacity-40" />
-                  : m.url
-                    ? <img src={m.url} alt={m.title} className="w-full h-full object-cover" />
-                    : <ImageIcon className="w-8 h-8 text-muted-foreground opacity-40" />}
-              </div>
-              <div className="p-3">
-                <p className="text-xs font-medium truncate">{m.title}</p>
-                <p className="text-[10px] text-muted-foreground mt-0.5">
-                  {m.type === "video" ? "Vídeo" : "Imagem"}
-                  {m.cloudflare_id && (
-                    <button className="ml-2 text-primary hover:underline"
-                      onClick={() => navigator.clipboard.writeText(m.cloudflare_id)}>
-                      Copiar ID
-                    </button>
-                  )}
-                  {m.url && m.type === "image" && (
-                    <button className="ml-2 text-primary hover:underline"
-                      onClick={() => navigator.clipboard.writeText(m.url)}>
-                      Copiar URL
-                    </button>
-                  )}
-                </p>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }

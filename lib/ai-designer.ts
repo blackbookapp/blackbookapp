@@ -75,6 +75,7 @@ COPY: títulos curtos (≤8 palavras) focados no resultado do aluno; frases curt
 
 DESIGN: contraste legível sempre (fundo escuro → texto claro; botão contrasta com seu texto). 1 cor de destaque. Fontes: blackwork/old school → bebas|oswald|pirata; fineline → playfair; moderno → inter|space.
 
+VÍDEOS: para mostrar um vídeo do criador, use uma seção video com props.video_id da lista "Vídeos do criador" (pode haver várias seções video). Sem video_id, a seção mostra o vídeo de apresentação do curso (se tem_video).
 IMAGENS: use só URLs dos dados (fotos do criador) ou retornadas pelas ferramentas; máx. ${maxImageCalls} por pedido; se der erro, siga sem imagem e avise numa linha.
 
 SEÇÕES (props omitidas = dados reais do curso):

@@ -21,7 +21,7 @@ export interface PageDoc {
   sections: Section[];
 }
 
-type FieldSpec = number | "url" | "number";
+type FieldSpec = number | "url" | "number" | "video";
 interface TypeSpec {
   label: string;
   variants: string[];
@@ -35,7 +35,7 @@ const SUB = 400;
 
 export const SECTION_SPECS: Record<SectionType, TypeSpec> = {
   hero: { label: "Capa", variants: ["center", "split", "image"], fields: { eyebrow: EYEBROW, title: TITLE, subtitle: SUB, cta_label: 40, image: "url" } },
-  video: { label: "Vídeo de apresentação", variants: ["default"], fields: { eyebrow: EYEBROW, title: TITLE, subtitle: SUB } },
+  video: { label: "Vídeo (apresentação do curso ou um vídeo da biblioteca)", variants: ["default", "wide"], fields: { eyebrow: EYEBROW, title: TITLE, subtitle: SUB, video_id: "video" } },
   about: { label: "Sobre o professor", variants: ["image-right", "image-left", "centered"], fields: { eyebrow: EYEBROW, title: TITLE, text: 2000, image: "url" } },
   modules: { label: "Módulos do curso", variants: ["grid", "list"], fields: { eyebrow: EYEBROW, title: TITLE, subtitle: SUB } },
   benefits: {
@@ -86,8 +86,13 @@ export function isAllowedImageUrl(v: unknown): v is string {
   }
 }
 
+export function isValidVideoId(v: unknown): v is string {
+  return typeof v === "string" && /^[a-f0-9]{32}$/.test(v);
+}
+
 function cleanValue(spec: FieldSpec, v: unknown) {
   if (spec === "url") return isAllowedImageUrl(v) ? v : undefined;
+  if (spec === "video") return isValidVideoId(v) ? v : undefined;
   if (spec === "number") {
     const n = Number(v);
     return Number.isFinite(n) && n >= 0 && n <= 3650 ? Math.round(n) : undefined;
@@ -180,7 +185,7 @@ export function defaultPage(course: any): PageDoc {
 export function schemaForPrompt() {
   return SECTION_TYPES.map((t) => {
     const sp = SECTION_SPECS[t];
-    const fields = Object.entries(sp.fields).map(([k, v]) => (v === "url" ? `${k}:url` : v === "number" ? `${k}:n` : k));
+    const fields = Object.entries(sp.fields).map(([k, v]) => (v === "url" ? `${k}:url` : v === "number" ? `${k}:n` : v === "video" ? `${k}:id_do_video` : k));
     const lists = Object.entries(sp.lists ?? {}).map(([k, l]) => `${k}:[{${Object.keys(l.fields).join(",")}}]`);
     return `${t} [${sp.variants.join("|")}] ${[...fields, ...lists].join(" ")}`;
   }).join("\n");
