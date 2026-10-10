@@ -148,7 +148,8 @@ export function LoginModal({ isOpen, onClose, onSuccess, initialView = "login" }
     setInfoMsg("");
     try {
       const [firstName, ...rest] = nome.trim().split(/\s+/);
-      const { error } = await signUp.password({
+      // create() always starts a fresh sign-up; password() would PATCH a stale one left by an earlier failed attempt.
+      const { error } = await signUp.create({
         emailAddress: email.trim(),
         password,
         firstName,
