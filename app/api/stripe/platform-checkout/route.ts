@@ -33,6 +33,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Página não encontrada." }, { status: 404 });
     }
 
+    const { data: course } = await supabase.from("creator_courses").select("id").eq("creator_id", profile.id).maybeSingle();
+    if (!course) {
+      return NextResponse.json({ error: "Seu curso ainda não foi salvo. Volte ao passo anterior e salve a página antes de publicar." }, { status: 400 });
+    }
+
     if (profile.platform_paid || (await checkIsAdmin())) {
       // Already paid — just publish the LP and redirect to painel
       await supabase.from("creator_profiles").update({ platform_paid: true }).eq("id", profile.id);

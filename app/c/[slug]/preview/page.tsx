@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic";
 
+import { one } from "@/lib/one";
 import { notFound } from "next/navigation";
 import { auth } from "@clerk/nextjs/server";
 import CreatorLP from "../CreatorLP";
@@ -35,5 +36,5 @@ export default async function PreviewPage({ params }: { params: Promise<{ slug: 
   if (profile.user_id !== userId && !(await checkIsAdmin())) notFound();
 
   const { user_id: _omit, ...publicProfile } = profile as any;
-  return <CreatorLP profile={publicProfile} course={(profile as any).creator_courses?.[0] || null} isPreview />;
+  return <CreatorLP profile={publicProfile} course={one((profile as any).creator_courses) || null} isPreview />;
 }

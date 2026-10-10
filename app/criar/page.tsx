@@ -12,6 +12,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ThemeEditor } from "@/components/ThemeEditor";
 import { normalizeTheme, type LPTheme } from "@/lib/theme";
+import { one } from "@/lib/one";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 interface WizardData {
@@ -602,11 +603,42 @@ export default function CriarPage() {
 
   const set = (k: keyof WizardData, v: any) => setData((prev) => ({ ...prev, [k]: v }));
 
+  // Reabrir o assistente carrega o que já está salvo (antes começava vazio e sobrescrevia).
+  useEffect(() => {
+    fetch("/api/creator?me=1")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        const p = d?.profile;
+        if (!p) return;
+        const c: any = one(p.creator_courses);
+        const str = (v: unknown) => (v === null || v === undefined ? "" : String(v));
+        setData((prev) => ({
+          ...prev,
+          name: str(p.name), bio: str(p.bio), photo_url: str(p.photo_url), specialty: str(p.specialty),
+          instagram: str(p.instagram), slug: str(p.slug), theme_color: p.theme_color || prev.theme_color,
+          theme: p.theme ? normalizeTheme(p.theme, p.theme_color) : prev.theme,
+          ...(c ? {
+            course_title: str(c.title), course_subtitle: str(c.subtitle), main_promise: str(c.main_promise),
+            description: str(c.description), target_audience: str(c.target_audience),
+            price: str(c.price), price_installments: str(c.price_installments),
+            price_installment_value: c.price_installment_value ? String(c.price_installment_value).replace(".", ",") : "",
+            video_id: str(c.video_id),
+            modules: (c.creator_modules ?? []).length
+              ? [...c.creator_modules].sort((a: any, b: any) => a.order_index - b.order_index).map((m: any) => m.title)
+              : prev.modules,
+            testimonials: (c.creator_testimonials ?? []).length
+              ? c.creator_testimonials.map((t: any) => ({ name: t.name, role: t.role ?? "", text: t.text, stars: t.stars ?? 5 }))
+              : prev.testimonials,
+          } : {}),
+        }));
+      })
+      .catch(() => {});
+  }, []);
+
   const canProceed = () => {
     if (step === 1) return data.name.trim() && data.slug.trim() && data.bio.trim();
     if (step === 2) return data.course_title.trim() && data.main_promise.trim();
     if (step === 3) return data.modules.filter(m => m.trim()).length >= 3;
-    if (step === 4) return data.testimonials.some(t => t.name.trim() && t.text.trim());
     if (step === 5) return data.price.trim();
     return true;
   };

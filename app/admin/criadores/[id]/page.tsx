@@ -1,3 +1,4 @@
+import { one } from "@/lib/one";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, ExternalLink, Eye, PlayCircle, Instagram } from "lucide-react";
@@ -14,7 +15,7 @@ export default async function CriadorDetail({ params }: { params: Promise<{ id: 
     .eq("id", id)
     .maybeSingle();
   if (!c) notFound();
-  const course = (c as any).creator_courses?.[0];
+  const course = one((c as any).creator_courses);
 
   const [{ data: sales }, { data: enrollments }, { count: modules }, { count: lessons }, { count: views }, { count: coupons }] = await Promise.all([
     db.from("creator_sales").select("*").eq("creator_id", id).order("created_at", { ascending: false }),

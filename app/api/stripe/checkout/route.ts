@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { db, priceToCents, PLATFORM_FEE_PERCENT, appUrl } from "@/lib/creator-server";
+import { one } from "@/lib/one";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: "2026-07-29.dahlia" as any });
 
@@ -27,7 +28,7 @@ async function loadCourse(slug: string) {
     .select("id, name, stripe_account_id, stripe_onboarding_done, creator_courses(*)")
     .eq("slug", slug)
     .maybeSingle();
-  return { profile, course: profile?.creator_courses?.[0] ?? null };
+  return { profile, course: one((profile as any)?.creator_courses) as any };
 }
 
 // GET /api/stripe/checkout?slug=x&coupon=y — valida cupom e devolve o preço final

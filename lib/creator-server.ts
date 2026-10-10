@@ -1,3 +1,4 @@
+import { one } from "@/lib/one";
 import { createClient } from "@supabase/supabase-js";
 import { currentUser } from "@clerk/nextjs/server";
 import type Stripe from "stripe";
@@ -37,7 +38,7 @@ export async function getCreatorByUser(userId: string) {
     .eq("user_id", userId)
     .maybeSingle();
   if (!data) return null;
-  return { profile: data, course: data.creator_courses?.[0] ?? null };
+  return { profile: data, course: one(data.creator_courses) ?? null };
 }
 
 /** Updates module titles in place by position so lessons attached to them survive. */

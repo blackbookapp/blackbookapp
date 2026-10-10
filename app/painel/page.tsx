@@ -1,5 +1,6 @@
 "use client";
 
+import { one } from "@/lib/one";
 import { useEffect, useState, useRef, Suspense } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { motion, useInView } from "motion/react";
@@ -154,7 +155,7 @@ function DashboardTab({ profile, sales, lessonCount, setActive }: {
     return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear() && s.status === "paid";
   }).reduce((a, s) => a + s.creator_amount, 0);
 
-  const course = profile.creator_courses?.[0];
+  const course = one(profile.creator_courses);
 
   const checklist: { done: boolean; label: string; href?: string; tab?: string }[] = [
     { done: !!profile.name && !!profile.bio, label: "Perfil preenchido", tab: "editor" },
@@ -591,7 +592,7 @@ function PainelContent() {
         )}
 
         {active === "dashboard" && <DashboardTab profile={profile} sales={sales} lessonCount={lessonCount} setActive={setActive} />}
-        {active === "conteudo" && <ConteudoTab courseId={profile.creator_courses?.[0]?.id} />}
+        {active === "conteudo" && <ConteudoTab courseId={one(profile.creator_courses)?.id} />}
         {active === "alunos" && <AlunosTab />}
         {active === "cupons" && <CuponsTab slug={profile.slug} />}
         {active === "editor" && <EditorTab profile={profile} />}

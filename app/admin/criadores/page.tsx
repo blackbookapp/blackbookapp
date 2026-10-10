@@ -1,3 +1,4 @@
+import { one } from "@/lib/one";
 import Link from "next/link";
 import { db, formatBRL } from "@/lib/creator-server";
 import { Badge, Table, FilterBar, fmtDate } from "../ui";
@@ -32,7 +33,7 @@ export default async function CriadoresPage({ searchParams }: { searchParams: Pr
 
   const term = q.toLowerCase();
   const list = (creators ?? []).filter((c: any) => {
-    const course = c.creator_courses?.[0];
+    const course = one(c.creator_courses);
     if (term && ![c.name, c.slug, c.instagram, course?.title].some((v) => (v || "").toLowerCase().includes(term))) return false;
     if (status === "no-ar") return !!course?.is_published;
     if (status === "rascunho") return !course?.is_published;
@@ -50,7 +51,7 @@ export default async function CriadoresPage({ searchParams }: { searchParams: Pr
 
       <Table head={["Criador", "Curso", "Status", "Vendas", "Alunos", "Cadastro"]} empty={!list.length}>
         {list.map((c: any) => {
-          const course = c.creator_courses?.[0];
+          const course = one(c.creator_courses);
           const t = totals.get(c.id);
           return (
             <tr key={c.id}>

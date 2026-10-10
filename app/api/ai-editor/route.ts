@@ -1,3 +1,4 @@
+import { one } from "@/lib/one";
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db, syncModules, priceToCents } from "@/lib/creator-server";
@@ -42,7 +43,7 @@ export async function POST(req: NextRequest) {
     .maybeSingle();
   if (!profile) return NextResponse.json({ error: "Perfil não encontrado. Salve sua página primeiro." }, { status: 404 });
 
-  const course = profile.creator_courses?.[0];
+  const course = one(profile.creator_courses);
   if (course?.creator_modules) course.creator_modules.sort((a: any, b: any) => a.order_index - b.order_index);
   let page: PageDoc = sanitizePage(course?.page) ?? defaultPage(course);
   let pageDirty = false;

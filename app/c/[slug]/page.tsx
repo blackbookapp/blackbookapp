@@ -1,3 +1,4 @@
+import { one } from "@/lib/one";
 import { notFound } from "next/navigation";
 import CreatorLP from "./CreatorLP";
 import { db } from "@/lib/creator-server";
@@ -14,7 +15,7 @@ async function getCreatorData(slug: string) {
   const profile = res.data;
 
   if (!profile) return null;
-  const course = (profile as any).creator_courses?.[0] || null;
+  const course = one((profile as any).creator_courses) || null;
   if (!course) return null;
   return { profile: profile as any, course };
 }

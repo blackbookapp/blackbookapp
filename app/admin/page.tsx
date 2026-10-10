@@ -1,3 +1,4 @@
+import { one } from "@/lib/one";
 import Link from "next/link";
 import { db, formatBRL } from "@/lib/creator-server";
 import { Stat, Badge, Table, BarChart, fmtDate } from "./ui";
@@ -25,7 +26,7 @@ export default async function AdminOverview() {
   const gmv = paid.reduce((a, s) => a + s.amount_total, 0);
   const fees = paid.reduce((a, s) => a + s.platform_fee, 0);
   const paid30 = paid.filter((s) => s.created_at >= since);
-  const published = list.filter((c: any) => c.creator_courses?.[0]?.is_published).length;
+  const published = list.filter((c: any) => one(c.creator_courses)?.is_published).length;
   const names = new Map(list.map((c) => [c.id, c]));
 
   const series = Array.from({ length: DAYS }, (_, i) => ({ day: dayKey(new Date(Date.now() - (DAYS - 1 - i) * 86400000)), value: 0 }));
@@ -84,7 +85,7 @@ export default async function AdminOverview() {
               <tr key={c.id}>
                 <td><Link href={`/admin/criadores/${c.id}`} className="font-medium hover:underline">{c.name}</Link><p className="text-xs text-muted-foreground">/c/{c.slug}</p></td>
                 <td className="space-x-1">
-                  {c.creator_courses?.[0]?.is_published ? <Badge tone="green">no ar</Badge> : <Badge tone="gray">rascunho</Badge>}
+                  {one(c.creator_courses)?.is_published ? <Badge tone="green">no ar</Badge> : <Badge tone="gray">rascunho</Badge>}
                   {!c.stripe_onboarding_done && <Badge tone="yellow">sem stripe</Badge>}
                 </td>
                 <td className="text-muted-foreground whitespace-nowrap">{fmtDate(c.created_at)}</td>
